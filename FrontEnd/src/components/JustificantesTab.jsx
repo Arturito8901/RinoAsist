@@ -6,41 +6,7 @@ import {
 
 const generateSessionId = () => `SESS-${Date.now()}`;
 
-const INITIAL_MOCK_JUSTIFICATIONS = [
-  {
-    id: 'just-1',
-    studentId: 'AL-2610101',
-    studentName: 'Mateo Hernández Ruiz',
-    reason: 'Médico',
-    startDate: '2026-05-25', // Monday of w1
-    endDate: '2026-05-26', // Tuesday of w1
-    status: 'Aprobado',
-    fileName: 'receta_imss_2505.pdf',
-    notes: 'Paciente presentó cuadro de gastroenteritis infecciosa aguda con indicación de reposo por 48 horas.'
-  },
-  {
-    id: 'just-2',
-    studentId: 'AL-2610105',
-    studentName: 'Valeria Martínez Castro',
-    reason: 'Académico',
-    startDate: '2026-05-27', // Wednesday of w1
-    endDate: '2026-05-27',
-    status: 'Pendiente',
-    fileName: 'pase_congreso_tecnm.pdf',
-    notes: 'Asistencia al Congreso Nacional de Ingeniería de Software en representación del Tecnológico.'
-  },
-  {
-    id: 'just-3',
-    studentId: 'AL-2610108',
-    studentName: 'Elena Díaz Velázquez',
-    reason: 'Personal',
-    startDate: '2026-05-19', // Tuesday of w2
-    endDate: '2026-05-20', // Wednesday of w2
-    status: 'Aprobado',
-    fileName: 'justificante_familiar.pdf',
-    notes: 'Causa de fuerza mayor por inundación en domicilio familiar.'
-  }
-];
+const INITIAL_MOCK_JUSTIFICATIONS = [];
 
 export default function JustificantesTab({ isDocente = false, docenteId = null }) {
   const [activeSubTab, setActiveSubTab] = useState('justificantes'); // 'justificantes' | 'aclaraciones'
