@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FileText, Check, X, ShieldAlert, FileCheck, FileX, 
-  Plus, Calendar, User, Upload, ChevronDown, ChevronUp, Search, Info
+  Plus, Calendar, User, Upload, ChevronDown, ChevronUp, Search, Info,
+  Download, Printer
 } from 'lucide-react';
 
 const generateSessionId = () => `SESS-${Date.now()}`;
@@ -85,6 +86,204 @@ export default function JustificantesTab({ isDocente = false, docenteId = null }
   const saveClaimsToStorage = (updatedClaims) => {
     setClaims(updatedClaims);
     localStorage.setItem('attendance_claims', JSON.stringify(updatedClaims));
+  };
+
+  const handleDownloadFile = (just) => {
+    const content = `==================================================
+✉️ [JUSTIFICANTE RinoAsist]
+==================================================
+Folio: ${just.id}
+Alumno: ${just.studentName}
+Matrícula: ${just.studentId || 'AL-XXXXXX'}
+Motivo: ${just.reason}
+Periodo: ${just.startDate} al ${just.endDate}
+Estatus: ${just.status}
+
+Archivo Original: ${just.fileName}
+
+Notas y Diagnóstico:
+${just.notes || 'No se ingresaron notas adicionales.'}
+==================================================
+Documento emitido para fines de justificación escolar.
+`;
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = just.fileName.replace(/\.[^/.]+$/, "") + "_descargado.txt";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const handlePrintReceipt = (just) => {
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    if (!printWindow) return;
+    
+    const formattedDate = new Date().toLocaleDateString('es-MX', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Acuse de Justificación - ${just.studentName}</title>
+          <style>
+            body {
+              font-family: 'Segoe UI', Arial, sans-serif;
+              padding: 40px;
+              color: #0f172a;
+              line-height: 1.6;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #0052cc;
+              padding-bottom: 20px;
+              margin-bottom: 40px;
+            }
+            .logo {
+              font-size: 28px;
+              font-weight: 800;
+              color: #0052cc;
+              margin: 0;
+              letter-spacing: 2px;
+            }
+            .subtitle {
+              font-size: 12px;
+              color: #64748b;
+              margin-top: 5px;
+              text-transform: uppercase;
+              font-weight: bold;
+            }
+            .title {
+              text-align: center;
+              font-size: 18px;
+              font-weight: bold;
+              margin-bottom: 30px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .date {
+              text-align: right;
+              font-size: 14px;
+              margin-bottom: 40px;
+            }
+            .salutation {
+              font-weight: bold;
+              margin-bottom: 20px;
+            }
+            .content {
+              font-size: 15px;
+              text-align: justify;
+              margin-bottom: 40px;
+            }
+            .details-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 20px 0;
+            }
+            .details-table td {
+              padding: 8px 12px;
+              border: 1px solid #e2e8f0;
+            }
+            .details-table td.label {
+              font-weight: bold;
+              background-color: #f8fafc;
+              width: 30%;
+            }
+            .signature {
+              margin-top: 80px;
+              text-align: center;
+            }
+            .signature-line {
+              width: 250px;
+              border-top: 1px solid #0f172a;
+              margin: 0 auto 10px auto;
+            }
+            .footer {
+              margin-top: 100px;
+              text-align: center;
+              font-size: 10px;
+              color: #94a3b8;
+              border-top: 1px solid #e2e8f0;
+              padding-top: 10px;
+            }
+            @media print {
+              body { padding: 20px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1 class="logo">RinoAsist</h1>
+            <div class="subtitle">Tecnológico de Estudios Superiores de Chimalhuacán</div>
+          </div>
+          
+          <div class="date">
+            Chimalhuacán, Estado de México, a ${formattedDate}
+          </div>
+          
+          <div class="title">
+            Acuse de Justificación Oficial de Inasistencias
+          </div>
+          
+          <div class="salutation">
+            A LOS DOCENTES DE LA INSTITUCIÓN:<br>
+            PRESENTE.
+          </div>
+          
+          <div class="content">
+            Por medio de la presente, el Departamento de Control Escolar hace constar que el estudiante cuyos detalles se describen a continuación ha presentado la documentación correspondiente para justificar sus inasistencias debido a motivos de causa mayor:
+            
+            <table class="details-table">
+              <tr>
+                <td class="label">Nombre del Alumno</td>
+                <td>${just.studentName}</td>
+              </tr>
+              <tr>
+                <td class="label">Matrícula</td>
+                <td>${just.studentId || 'N/A'}</td>
+              </tr>
+              <tr>
+                <td class="label">Motivo</td>
+                <td>${just.reason}</td>
+              </tr>
+              <tr>
+                <td class="label">Periodo Justificado</td>
+                <td>Del <strong>${just.startDate}</strong> al <strong>${just.endDate}</strong></td>
+              </tr>
+              <tr>
+                <td class="label">Archivo Adjunto</td>
+                <td>${just.fileName}</td>
+              </tr>
+            </table>
+            
+            Por tal motivo, se solicita atentamente a los docentes correspondientes otorgar las facilidades necesarias para justificar las inasistencias acumuladas durante el periodo mencionado, así como permitir la entrega y evaluación de trabajos, prácticas o exámenes pendientes, conforme al reglamento escolar.
+          </div>
+          
+          <div class="signature">
+            <div class="signature-line"></div>
+            <strong>Departamento de Control Escolar</strong><br>
+            Administración Central RinoAsist
+          </div>
+          
+          <div class="footer">
+            Este acuse es un documento digital oficial generado por el sistema de control de asistencias RinoAsist.
+          </div>
+          
+          <script>
+            window.onload = function() {
+              window.print();
+            };
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   // Get docente's assigned students (or all students for admin)
@@ -869,7 +1068,17 @@ export default function JustificantesTab({ isDocente = false, docenteId = null }
                         </div>
                       </td>
                       <td className="py-4 px-6 font-mono text-[11px] text-txt-subtle">
-                        {just.fileName}
+                        <div className="flex items-center gap-2">
+                          <span className="truncate max-w-[120px]" title={just.fileName}>{just.fileName}</span>
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadFile(just)}
+                            className="text-brand-primary hover:text-brand-hover p-1 rounded hover:bg-brand-primary/10 transition-all cursor-pointer flex items-center justify-center"
+                            title="Descargar Justificante"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                       <td className="py-4 px-6">
                         {getStatusBadge(just.status)}
@@ -894,7 +1103,19 @@ export default function JustificantesTab({ isDocente = false, docenteId = null }
                               </button>
                             </>
                           ) : (
-                            <span className="text-[10px] text-txt-subtle font-bold italic">Auditado</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-txt-subtle font-bold italic mr-1">Auditado</span>
+                              {!isDocente && just.status === 'Aprobado' && (
+                                <button
+                                  type="button"
+                                  onClick={() => handlePrintReceipt(just)}
+                                  className="bg-brand-primary/10 hover:bg-brand-primary/20 text-brand-primary border border-brand-primary/20 p-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center animate-fadeIn"
+                                  title="Generar Acuse de Recibo"
+                                >
+                                  <Printer className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
                           )}
                         </div>
                       </td>
