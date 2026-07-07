@@ -1147,7 +1147,18 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
       { key: 'Viernes', label: 'Viernes' }
     ];
     
-    const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+    // Detect shift from assigned group keys (e.g. keys ending in 'V' represent Vespertino)
+    let shift = 'Matutino';
+    if (grupos && grupos.length > 0) {
+      const hasVespertino = grupos.some(g => g.key && g.key.toUpperCase().endsWith('V'));
+      if (hasVespertino) {
+        shift = 'Vespertino';
+      }
+    }
+
+    const HOURS = shift === 'Vespertino'
+      ? [14, 15, 16, 17, 18, 19, 20, 21]
+      : [7, 8, 9, 10, 11, 12, 13, 14];
     
     const parseSchedule = (scheduleStr) => {
       if (!scheduleStr) return [];
