@@ -488,13 +488,66 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
     return () => clearInterval(interval);
   }, [showQRModal, selectedGroupId]);
 
+  const detectCurrentActiveGroup = (groups) => {
+    if (!groups || groups.length === 0) return null;
+    
+    const now = new Date();
+    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
+    const currentDay = dayNames[now.getDay()];
+    const currentHour = now.getHours();
+    
+    for (const g of groups) {
+      const scheduleStr = g.schedule || '';
+      const parts = scheduleStr.split(',').map(p => p.trim());
+      
+      for (const part of parts) {
+        const matchDay = part.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Lunes|Martes|Miércoles|Miercoles|Jueves|Viernes|Sábado|Sabado)\b/i);
+        if (!matchDay) continue;
+        const dayName = matchDay[1].toLowerCase();
+        let matchesDay = false;
+        
+        if (dayName.startsWith('lu') && currentDay === 'Lunes') matchesDay = true;
+        else if (dayName.startsWith('ma') && currentDay === 'Martes') matchesDay = true;
+        else if (dayName.startsWith('mi') && currentDay === 'Miércoles') matchesDay = true;
+        else if (dayName.startsWith('ju') && currentDay === 'Jueves') matchesDay = true;
+        else if (dayName.startsWith('vi') && currentDay === 'Viernes') matchesDay = true;
+        else if ((dayName.startsWith('sa') || dayName.startsWith('sá')) && currentDay === 'Sábado') matchesDay = true;
+        
+        if (!matchesDay) continue;
+        
+        let start = null;
+        let end = null;
+        
+        let matchTime = part.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+        if (matchTime) {
+          start = parseInt(matchTime[1]);
+          end = Math.ceil(parseInt(matchTime[3]) + parseInt(matchTime[4])/60);
+        } else {
+          matchTime = part.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
+          if (matchTime) {
+            start = parseInt(matchTime[1]);
+            end = parseInt(matchTime[2]);
+          }
+        }
+        
+        if (start !== null && end !== null) {
+          if (currentHour >= start && currentHour < end) {
+            return g.id;
+          }
+        }
+      }
+    }
+    return groups[0].id;
+  };
+
   async function loadGroupsAndInitialData() {
     setLoadingGroups(true);
     try {
       const groups = await api.getTeacherGroups();
       setTeacherGroups(groups);
       if (groups.length > 0) {
-        setSelectedGroupId(groups[0].id);
+        const activeId = detectCurrentActiveGroup(groups);
+        setSelectedGroupId(activeId);
       }
     } catch (err) {
       console.error("Error loading teacher groups:", err);
@@ -1675,7 +1728,8 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                 <select 
                   value={selectedGroupId} 
                   onChange={handleGroupChange}
-                  className="bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none font-semibold text-sm w-full cursor-pointer theme-transition"
+                  disabled={true}
+                  className="bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none font-semibold text-sm w-full cursor-not-allowed opacity-75 theme-transition"
                 >
                   {teacherGroups.map(g => (
                     <option key={g.id} value={g.id}>{g.name} ({g.key})</option>
