@@ -1200,7 +1200,11 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
         allOccurrences.push(...parseSchedule(g.schedule));
       });
     }
-
+    // If there is any class on Saturday, add Saturday to days
+    const hasSaturdayClass = allOccurrences.some(o => o.day === 'Sábado');
+    if (hasSaturdayClass) {
+      days.push({ key: 'Sábado', label: 'Sábado' });
+    }
     let minHour = 7;
     let maxHour = 15;
 
@@ -1605,48 +1609,54 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                   <p className="text-xs text-txt-muted mt-0.5">Calendario interactivo. Haz clic en una materia para abrir detalles o iniciar pase de lista.</p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-                  {getWeeklySchedule(teacherOverview?.grupos).map((day) => (
-                    <div key={day.key} className="flex flex-col gap-2 p-3 rounded-xl border border-bdr-base bg-bg-surface/50 theme-transition">
-                      <span className="text-xs font-bold text-txt-muted border-b border-bdr-base pb-1.5 block text-center uppercase tracking-wider">{day.label}</span>
-                      <div className="flex-1 flex flex-col gap-2 mt-1">
-                        {day.slots.map((slot, idx) => {
-                          if (slot.skip) return null;
-                          if (slot.class) {
-                            const cls = slot.class;
-                            const duration = slot.duration;
-                            const height = duration * 55 + (duration - 1) * 8;
-                            return (
-                              <button 
-                                key={`${cls.id}-${idx}`} 
-                                type="button"
-                                onClick={() => setSelectedClassDetailModal({ isOpen: true, classData: cls })}
-                                style={{ height: `${height}px` }}
-                                className="p-2.5 rounded-lg border border-brand-primary/20 bg-brand-primary/5 hover:bg-brand-primary/10 hover:border-brand-primary/45 transition-all text-txt-base flex flex-col justify-between cursor-pointer w-full text-left active:scale-[0.98] outline-none overflow-hidden"
-                              >
-                                <div className="flex items-start justify-between gap-1 w-full">
-                                  <span className="text-xs font-bold leading-tight block break-words line-clamp-2 text-left" title={cls.name}>
-                                    {cls.name}
-                                  </span>
-                                </div>
-                                <div className="flex items-center justify-between text-[10px] gap-1 w-full mt-auto">
-                                  <span className="font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.2 rounded border border-brand-primary/20 shrink-0">{cls.key}</span>
-                                  <span className="text-txt-muted font-medium truncate">{cls.time}</span>
-                                </div>
-                              </button>
-                            );
-                          } else {
-                            return (
-                              <div key={`empty-${idx}`} style={{ height: '55px' }} className="rounded-lg border border-dashed border-bdr-base/20 flex items-center justify-center bg-bg-surface/5 theme-transition">
-                                <span className="text-[9px] text-txt-subtle/40 font-bold">{slot.hourLabel}</span>
-                              </div>
-                            );
-                          }
-                        })}
-                      </div>
+                {(() => {
+                  const scheduleDays = getWeeklySchedule(teacherOverview?.grupos);
+                  const gridColsClass = scheduleDays.length === 6 ? 'md:grid-cols-6' : 'md:grid-cols-5';
+                  return (
+                    <div className={`grid grid-cols-1 ${gridColsClass} gap-3`}>
+                      {scheduleDays.map((day) => (
+                        <div key={day.key} className="flex flex-col gap-2 p-3 rounded-xl border border-bdr-base bg-bg-surface/50 theme-transition">
+                          <span className="text-xs font-bold text-txt-muted border-b border-bdr-base pb-1.5 block text-center uppercase tracking-wider">{day.label}</span>
+                          <div className="flex-1 flex flex-col gap-2 mt-1">
+                            {day.slots.map((slot, idx) => {
+                              if (slot.skip) return null;
+                              if (slot.class) {
+                                const cls = slot.class;
+                                const duration = slot.duration;
+                                const height = duration * 55 + (duration - 1) * 8;
+                                return (
+                                  <button 
+                                    key={`${cls.id}-${idx}`} 
+                                    type="button"
+                                    onClick={() => setSelectedClassDetailModal({ isOpen: true, classData: cls })}
+                                    style={{ height: `${height}px` }}
+                                    className="p-2.5 rounded-lg border border-brand-primary/20 bg-brand-primary/5 hover:bg-brand-primary/10 hover:border-brand-primary/45 transition-all text-txt-base flex flex-col justify-between cursor-pointer w-full text-left active:scale-[0.98] outline-none overflow-hidden"
+                                  >
+                                    <div className="flex items-start justify-between gap-1 w-full">
+                                      <span className="text-xs font-bold leading-tight block break-words line-clamp-2 text-left" title={cls.name}>
+                                        {cls.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] gap-1 w-full mt-auto">
+                                      <span className="font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.2 rounded border border-brand-primary/20 shrink-0">{cls.key}</span>
+                                      <span className="text-txt-muted font-medium truncate">{cls.time}</span>
+                                    </div>
+                                  </button>
+                                );
+                              } else {
+                                return (
+                                  <div key={`empty-${idx}`} style={{ height: '55px' }} className="rounded-lg border border-dashed border-bdr-base/20 flex items-center justify-center bg-bg-surface/5 theme-transition">
+                                    <span className="text-[9px] text-txt-subtle/40 font-bold">{slot.hourLabel}</span>
+                                  </div>
+                                );
+                              }
+                            })}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  );
+                })()}
               </div>
             </>
           )}
