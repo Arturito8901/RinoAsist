@@ -1147,37 +1147,111 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
       { key: 'Viernes', label: 'Viernes' }
     ];
     
-    if (!grupos) return days.map(d => ({ ...d, classes: [] }));
+    const HOURS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
+    
+    const parseSchedule = (scheduleStr) => {
+      if (!scheduleStr) return [];
+      const occurrences = [];
+      const parts = scheduleStr.split(',').map(p => p.trim());
+      
+      parts.forEach(part => {
+        const matchDay = part.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Lunes|Martes|Miércoles|Miercoles|Jueves|Viernes|Sábado|Sabado)\b/i);
+        if (!matchDay) return;
+        const dayName = matchDay[1].toLowerCase();
+        let dayKey = '';
+        if (dayName.startsWith('lu')) dayKey = 'Lunes';
+        else if (dayName.startsWith('ma')) dayKey = 'Martes';
+        else if (dayName.startsWith('mi')) dayKey = 'Miércoles';
+        else if (dayName.startsWith('ju')) dayKey = 'Jueves';
+        else if (dayName.startsWith('vi')) dayKey = 'Viernes';
+        else if (dayName.startsWith('sa')) dayKey = 'Sábado';
+        
+        if (!dayKey) return;
+        
+        // Try 07:00 - 08:40 format
+        let matchTime = part.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+        if (matchTime) {
+          occurrences.push({
+            day: dayKey,
+            start: parseInt(matchTime[1]),
+            end: Math.ceil(parseInt(matchTime[3]) + parseInt(matchTime[4])/60),
+            label: `${matchTime[1]}:${matchTime[2]} - ${matchTime[3]}:${matchTime[4]}`
+          });
+          return;
+        }
+        
+        // Try 10-11 format
+        matchTime = part.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
+        if (matchTime) {
+          occurrences.push({
+            day: dayKey,
+            start: parseInt(matchTime[1]),
+            end: parseInt(matchTime[2]),
+            label: `${matchTime[1].padStart(2, '0')}:00 - ${matchTime[2].padStart(2, '0')}:00`
+          });
+          return;
+        }
+      });
+      return occurrences;
+    };
 
     return days.map(d => {
-      const classesForDay = [];
-      grupos.forEach(g => {
-        const scheduleStr = g.schedule || '';
-        const matchesDay = (
-          (d.key === 'Lunes' && /(lunes|\blu\b|\blu-|^lu-)/i.test(scheduleStr)) ||
-          (d.key === 'Martes' && /(martes|\bma\b|\bma-|^ma-)/i.test(scheduleStr)) ||
-          (d.key === 'Miércoles' && /(mi(e|é)rcoles|\bmi\b|\bmi-|^mi-)/i.test(scheduleStr)) ||
-          (d.key === 'Jueves' && /(jueves|\bju\b|\bju-|^ju-)/i.test(scheduleStr)) ||
-          (d.key === 'Viernes' && /(viernes|\bvi\b|\bvi-|^vi-)/i.test(scheduleStr))
-        );
+      const dayClasses = [];
+      if (grupos) {
+        grupos.forEach(g => {
+          const occurrences = parseSchedule(g.schedule);
+          occurrences.forEach(occ => {
+            if (occ.day === d.key) {
+              dayClasses.push({
+                id: g.id,
+                name: g.name,
+                key: g.key,
+                start: occ.start,
+                end: occ.end,
+                time: occ.label,
+                totalStudents: g.totalStudents,
+                asistencia_promedio: g.asistencia_promedio
+              });
+            }
+          });
+        });
+      }
+
+      const slots = [];
+      let skipCount = 0;
+      
+      HOURS.forEach(hour => {
+        if (skipCount > 0) {
+          slots.push({ hour, skip: true });
+          skipCount--;
+          return;
+        }
         
-        if (matchesDay) {
-          const timeMatch = scheduleStr.match(/\d{2}:\d{2}(?:\s*-\s*\d{2}:\d{2})?(?:\s*(?:am|pm))?/i);
-          const time = timeMatch ? timeMatch[0] : scheduleStr.replace(/(lunes|martes|miércoles|miercoles|jueves|viernes|lu-mi|ma-ju|lu|ma|mi|ju|vi|y)/gi, '').trim();
-          classesForDay.push({
-            id: g.id,
-            name: g.name,
-            key: g.key,
-            time: time || 'Horario no especificado',
-            schedule: g.schedule,
-            totalStudents: g.totalStudents,
-            asistencia_promedio: g.asistencia_promedio
+        const hourLabel = `${hour.toString().padStart(2, '0')}:00`;
+        const cls = dayClasses.find(c => c.start === hour);
+        if (cls) {
+          const duration = Math.max(1, cls.end - cls.start);
+          slots.push({
+            hour,
+            hourLabel,
+            class: cls,
+            duration,
+            skip: false
+          });
+          skipCount = duration - 1;
+        } else {
+          slots.push({
+            hour,
+            hourLabel,
+            class: null,
+            skip: false
           });
         }
       });
+
       return {
         ...d,
-        classes: classesForDay
+        slots
       };
     });
   };
@@ -1497,30 +1571,39 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                     <div key={day.key} className="flex flex-col gap-2 p-3 rounded-xl border border-bdr-base bg-bg-surface/50 theme-transition">
                       <span className="text-xs font-bold text-txt-muted border-b border-bdr-base pb-1.5 block text-center uppercase tracking-wider">{day.label}</span>
                       <div className="flex-1 flex flex-col gap-2 mt-1">
-                        {day.classes.length > 0 ? (
-                          day.classes.map((cls, idx) => (
-                            <button 
-                              key={`${cls.id}-${idx}`} 
-                              type="button"
-                              onClick={() => setSelectedClassDetailModal({ isOpen: true, classData: cls })}
-                              className="p-2.5 rounded-lg border border-brand-primary/20 bg-brand-primary/5 hover:bg-brand-primary/10 hover:border-brand-primary/45 transition-all text-txt-base space-y-1 cursor-pointer w-full text-left active:scale-[0.98] outline-none"
-                            >
-                              <div className="flex items-start justify-between gap-1">
-                                <span className="text-xs font-bold leading-tight block break-words line-clamp-2 text-left" title={cls.name}>
-                                  {cls.name}
-                                </span>
+                        {day.slots.map((slot, idx) => {
+                          if (slot.skip) return null;
+                          if (slot.class) {
+                            const cls = slot.class;
+                            const duration = slot.duration;
+                            const height = duration * 55 + (duration - 1) * 8;
+                            return (
+                              <button 
+                                key={`${cls.id}-${idx}`} 
+                                type="button"
+                                onClick={() => setSelectedClassDetailModal({ isOpen: true, classData: cls })}
+                                style={{ height: `${height}px` }}
+                                className="p-2.5 rounded-lg border border-brand-primary/20 bg-brand-primary/5 hover:bg-brand-primary/10 hover:border-brand-primary/45 transition-all text-txt-base flex flex-col justify-between cursor-pointer w-full text-left active:scale-[0.98] outline-none overflow-hidden"
+                              >
+                                <div className="flex items-start justify-between gap-1 w-full">
+                                  <span className="text-xs font-bold leading-tight block break-words line-clamp-2 text-left" title={cls.name}>
+                                    {cls.name}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between text-[10px] gap-1 w-full mt-auto">
+                                  <span className="font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.2 rounded border border-brand-primary/20 shrink-0">{cls.key}</span>
+                                  <span className="text-txt-muted font-medium truncate">{cls.time}</span>
+                                </div>
+                              </button>
+                            );
+                          } else {
+                            return (
+                              <div key={`empty-${idx}`} style={{ height: '55px' }} className="rounded-lg border border-dashed border-bdr-base/20 flex items-center justify-center bg-bg-surface/5 theme-transition">
+                                <span className="text-[9px] text-txt-subtle/40 font-bold">{slot.hourLabel}</span>
                               </div>
-                              <div className="flex items-center justify-between text-[10px] gap-1">
-                                <span className="font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.2 rounded border border-brand-primary/20 shrink-0">{cls.key}</span>
-                                <span className="text-txt-muted font-medium truncate">{cls.time}</span>
-                              </div>
-                            </button>
-                          ))
-                        ) : (
-                          <div className="flex-1 flex items-center justify-center py-4 rounded-lg border border-dashed border-bdr-base text-center">
-                            <span className="text-[11px] text-txt-subtle font-medium italic">Sin clases</span>
-                          </div>
-                        )}
+                            );
+                          }
+                        })}
                       </div>
                     </div>
                   ))}
