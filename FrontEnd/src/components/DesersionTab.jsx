@@ -29,14 +29,14 @@ const seedRandom = (str) => {
 };
 
 const SEMESTER_SUBJECTS = {
-  1: ['Fundamentos de Programación', 'Cálculo Diferencial', 'Química', 'Taller de Ética', 'Fundamentos de Investigación', 'Desarrollo Sustentable'],
-  2: ['Programación Orientada a Objetos', 'Cálculo Integral', 'Álgebra Lineal', 'Probabilidad y Estadística', 'Contabilidad Financiera', 'Química Orgánica'],
-  3: ['Estructuras de Datos', 'Cálculo Vectorial', 'Sistemas Operativos', 'Física General', 'Cultura Empresarial', 'Investigación de Operaciones'],
-  4: ['Métodos Numéricos', 'Taller de Sistemas Operativos', 'Fundamentos de Bases de Datos', 'Principios de Eléctrica y Electrónica', 'Simulación', 'Ecuaciones Diferenciales'],
-  5: ['Taller de Bases de Datos', 'Fundamentos de Telecomunicaciones', 'Graficación', 'Ingeniería de Software', 'Arquitectura de Computadoras', 'Programación Web'],
-  6: ['Administración de Bases de Datos', 'Redes de Computadoras', 'Lenguajes y Autómatas I', 'Taller de Ingeniería de Software', 'Lenguajes de Interfaz', 'Programación Web Avanzada'],
-  7: ['Sistemas Programables', 'Conmutación y Enrutamiento', 'Lenguajes y Autómatas II', 'Desarrollo Móvil', 'Taller de Investigación I', 'Seguridad de la Información'],
-  8: ['Administración de Redes', 'Inteligencia Artificial', 'Taller de Investigación II', 'Auditoría Informática', 'Seguridad en Cómputo Nube', 'Desarrollo Emprendedor']
+  1: ['Fundamentos de Programación', 'Fundamentos de Investigación', 'Química', 'Cálculo Diferencial', 'Matemáticas Discretas', 'Taller de Ética'],
+  2: ['Cálculo Integral', 'Programación Orientada a Objetos', 'Probabilidad y Estadística', 'Álgebra Lineal', 'Física General', 'Tópicos Avanzados de Programación'],
+  3: ['Estructura de Datos', 'Cálculo Vectorial', 'Sistemas Operativos', 'Interfaces Humano-Computadora', 'Principios Eléctricos y Aplicaciones Digitales', 'Investigación de Operaciones'],
+  4: ['Ecuaciones Diferenciales', 'Taller de Sistemas Operativos', 'Fundamentos de Bases de Datos', 'Simulación', 'Métodos Numéricos', 'Desarrollo Sustentable'],
+  5: ['Arquitectura de Computadoras', 'Fundamentos de Telecomunicaciones', 'Lenguajes y autómatas I', 'Fundamentos de Ingeniería de Software', 'Graficación', 'Taller de Base de Datos'],
+  6: ['Redes de Computadoras', 'Taller de Investigación I', 'Lenguajes y Autómatas II', 'Lenguajes de Interfaz', 'Administración de Bases de Datos', 'Programación Web'],
+  7: ['Taller de Investigación II', 'Inteligencia Artificial', 'Sistemas Programables', 'Conmutación y Enrutamiento de Redes de Datos', 'Programación Lógica y Funcional', 'Mercadotecnia Electrónica'],
+  8: ['Administración de Redes', 'Modelo Vista-Controlador', 'Programación del lado del Cliente', 'Programación del lado del Servidor', 'Seguridad en Aplicaciones Web', 'Ingeniería de Requerimientos']
 };
 
 // STUDENT_NAMES array removed to prioritize real database students
