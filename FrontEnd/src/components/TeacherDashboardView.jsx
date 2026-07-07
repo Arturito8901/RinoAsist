@@ -1147,19 +1147,6 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
       { key: 'Viernes', label: 'Viernes' }
     ];
     
-    // Detect shift from assigned group keys (e.g. keys ending in 'V' represent Vespertino)
-    let shift = 'Matutino';
-    if (grupos && grupos.length > 0) {
-      const hasVespertino = grupos.some(g => g.key && g.key.toUpperCase().endsWith('V'));
-      if (hasVespertino) {
-        shift = 'Vespertino';
-      }
-    }
-
-    const HOURS = shift === 'Vespertino'
-      ? [14, 15, 16, 17, 18, 19, 20, 21]
-      : [7, 8, 9, 10, 11, 12, 13, 14];
-    
     const parseSchedule = (scheduleStr) => {
       if (!scheduleStr) return [];
       const occurrences = [];
@@ -1206,6 +1193,47 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
       return occurrences;
     };
 
+    // Gather all occurrences first to determine dynamic hours boundary
+    const allOccurrences = [];
+    if (grupos) {
+      grupos.forEach(g => {
+        allOccurrences.push(...parseSchedule(g.schedule));
+      });
+    }
+
+    let minHour = 7;
+    let maxHour = 15;
+
+    if (allOccurrences.length > 0) {
+      minHour = Math.min(...allOccurrences.map(o => o.start));
+      maxHour = Math.max(...allOccurrences.map(o => o.end));
+      
+      // Ensure at least 6 slots range for visual completeness
+      if (maxHour - minHour < 6) {
+        maxHour = minHour + 6;
+      }
+    } else {
+      // Fallback auto-detection of shift if no occurrences are parsed
+      let shift = 'Matutino';
+      if (grupos && grupos.length > 0) {
+        const hasVespertino = grupos.some(g => g.key && g.key.toUpperCase().endsWith('V'));
+        if (hasVespertino) {
+          shift = 'Vespertino';
+        }
+      }
+      if (shift === 'Vespertino') {
+        minHour = 14;
+        maxHour = 22;
+      } else {
+        minHour = 7;
+        maxHour = 15;
+      }
+    }
+
+    const HOURS = [];
+    for (let h = minHour; h < maxHour; h++) {
+      HOURS.push(h);
+    }
     return days.map(d => {
       const dayClasses = [];
       if (grupos) {
