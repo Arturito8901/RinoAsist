@@ -220,11 +220,11 @@ Documento emitido para fines de justificación escolar.
         <body>
           <div class="header">
             <h1 class="logo">RinoAsist</h1>
-            <div class="subtitle">Tecnológico de Estudios Superiores de Chimalhuacán</div>
+            <div class="subtitle">Tecnológico de Estudios Superiores de Cuautitlán Izcalli</div>
           </div>
           
           <div class="date">
-            Chimalhuacán, Estado de México, a ${formattedDate}
+            Cuautitlán Izcalli, Estado de México, a ${formattedDate}
           </div>
           
           <div class="title">
