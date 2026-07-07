@@ -1,0 +1,174 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  --background-base: #ffffff;
+  --background-surface: #f8fafc;
+  --background-card: #ffffff;
+  --text-base: #0f172a;
+  --text-muted: #475569;
+  --text-subtle: #64748b;
+  --border-base: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --brand-primary: #0052cc; /* Azul Rey */
+  --brand-hover: #0043a8;
+  --brand-light: #eff6ff;
+  --brand-border: #bfdbfe;
+}
+
+.dark {
+  --background-base: #090d16; /* Midnight Dark Navy */
+  --background-surface: #0f172a; /* Slate Dark */
+  --background-card: #151e36; /* Navy Card */
+  --text-base: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-subtle: #64748b;
+  --border-base: #1e293b;
+  --border-subtle: #111827;
+  --brand-primary: #3b82f6; /* Bright Royal Blue for Dark Mode */
+  --brand-hover: #2563eb;
+  --brand-light: #1e293b;
+  --brand-border: #1e3a8a;
+}
+
+@theme {
+  --font-sans: 'Outfit', sans-serif;
+  
+  /* Semantic theme variables mapped to classes */
+  --color-bg-base: var(--background-base);
+  --color-bg-surface: var(--background-surface);
+  --color-bg-card: var(--background-card);
+  --color-txt-base: var(--text-base);
+  --color-txt-muted: var(--text-muted);
+  --color-txt-subtle: var(--text-subtle);
+  --color-bdr-base: var(--border-base);
+  --color-bdr-subtle: var(--border-subtle);
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-light: var(--brand-light);
+  --color-brand-border: var(--brand-border);
+
+  /* Custom premium animations */
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-float-slow: float 9s ease-in-out infinite;
+  --animate-float-reverse: float-reverse 7s ease-in-out infinite;
+  --animate-pulse-slow: pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  --animate-fade-in: fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  --animate-fadeIn: fade-in 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  --animate-scale-in: scale-in 0.25s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+  --animate-laser-scan: laser-scan 2.5s ease-in-out infinite;
+  --animate-fade-in-out: fade-in-out 10s ease-in-out infinite;
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(-15px) rotate(2deg); }
+  }
+  @keyframes float-reverse {
+    0%, 100% { transform: translateY(0px) rotate(0deg); }
+    50% { transform: translateY(12px) rotate(-2deg); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes scale-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes laser-scan {
+    0%, 100% { transform: translateY(-90px); }
+    50% { transform: translateY(90px); }
+  }
+  @keyframes fade-in-out {
+    0%, 100% { opacity: 0; transform: scale(0.92); }
+    15%, 85% { opacity: 0.85; transform: scale(1); }
+  }
+
+}
+
+/* Base styles and transitions */
+html, body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Outfit', sans-serif;
+  background-color: var(--background-base);
+  color: var(--text-base);
+  overflow-x: hidden;
+}
+
+/* Transición suave global de tema para elementos estructurales */
+html, body, aside, main, header, footer, .theme-transition {
+  transition: background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              color 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Transición suave para botones, interactivos e inputs */
+button, input, select, textarea, a, .lucide, .interactive-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Custom premium scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+.sidebar-transition {
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              background-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1), 
+              color 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Table Accordion Row Transitions (Smooth Expand/Collapse) */
+.table-accordion-row {
+  visibility: collapse;
+  opacity: 0;
+  transition: visibility 0s 300ms, opacity 300ms cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
+}
+.table-accordion-row.expanded {
+  visibility: visible;
+  opacity: 1;
+  transition: visibility 0s 0s, opacity 300ms cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s ease;
+}
+
+.table-accordion-content {
+  max-height: 0;
+  overflow: hidden;
+  padding: 0 24px;
+  opacity: 0;
+  transition: max-height 300ms cubic-bezier(0.4, 0, 0.2, 1), 
+              padding 300ms cubic-bezier(0.4, 0, 0.2, 1),
+              opacity 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.table-accordion-content.expanded {
+  max-height: 2000px;
+  padding: 24px;
+  opacity: 1;
+}
+

@@ -1,0 +1,10 @@
+{
+  "name": "rinoasist-root",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "postinstall": "npm install --prefix BackEnd",
+    "build": "echo 'No build needed for root'",
+    "start": "node BackEnd/src/server.js"
+  }
+}

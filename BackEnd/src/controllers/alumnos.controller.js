@@ -1,0 +1,472 @@
+import { runQuery, sql } from "../config/db.js";
+
+export const getAlumnosOverview = async (req, res) => {
+  try {
+    const alumnosQuery = `
+      SELECT 
+        u.usuario_id AS id, 
+        u.nombre_completo AS nombre, 
+        u.correo, 
+        pa.matricula, 
+        pa.semestre,
+        (
+          SELECT TOP 1 g.clave 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id
+        ) AS grupo_clave,
+        (
+          SELECT TOP 1 g.grupo_id 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id
+        ) AS grupo_id
+      FROM dbo.Usuarios u
+      JOIN dbo.PerfilesAlumnos pa ON u.usuario_id = pa.usuario_id
+      WHERE u.activo = 1 AND u.is_debug = 0
+      ORDER BY u.nombre_completo;
+    `;
+
+    const invitacionesQuery = `
+      SELECT 
+        i.invitacion_id AS id,
+        i.correo, 
+        i.estatus,
+        i.creado_en,
+        i.expires_at,
+        g.clave AS grupo_clave,
+        g.semestre
+      FROM dbo.InvitacionesAlumnos i
+      JOIN dbo.Grupos g ON i.grupo_id = g.grupo_id
+      ORDER BY i.creado_en DESC;
+    `;
+
+    const [alumnosResult, invitacionesResult] = await Promise.all([
+      runQuery(alumnosQuery),
+      runQuery(invitacionesQuery)
+    ]);
+
+    return res.json({
+      alumnos: alumnosResult.recordset,
+      invitaciones: invitacionesResult.recordset
+    });
+  } catch (error) {
+    console.error("Error loading alumnos overview:", error);
+    return res.status(500).json({ message: "No se pudo obtener la información de alumnos" });
+  }
+};
+
+export const requestDropCourse = async (req, res) => {
+  const alumnoId = req.user?.id;
+  const { asignacionId } = req.params;
+
+  if (!asignacionId) {
+    return res.status(400).json({ message: "ID de asignación obligatorio" });
+  }
+
+  try {
+    // Check if the student is enrolled in this assignment
+    const checkEnroll = await runQuery(`
+      SELECT 1 FROM dbo.Inscripciones
+      WHERE alumno_id = @alumnoId AND asignacion_id = @asignacionId AND estatus = 'activo'
+    `, [
+      { name: "alumnoId", type: sql.Int, value: alumnoId },
+      { name: "asignacionId", type: sql.Int, value: parseInt(asignacionId) }
+    ]);
+
+    if (checkEnroll.recordset.length === 0) {
+      return res.status(404).json({ message: "No estás inscrito en esta asignatura" });
+    }
+
+    // Check if there is already a pending drop request
+    const checkPending = await runQuery(`
+      SELECT 1 FROM dbo.SolicitudesBaja
+      WHERE alumno_id = @alumnoId AND asignacion_id = @asignacionId AND estatus = 'pendiente'
+    `, [
+      { name: "alumnoId", type: sql.Int, value: alumnoId },
+      { name: "asignacionId", type: sql.Int, value: parseInt(asignacionId) }
+    ]);
+
+    if (checkPending.recordset.length > 0) {
+      return res.status(409).json({ message: "Ya tienes una solicitud de baja pendiente para esta asignatura" });
+    }
+
+    // Insert drop request
+    await runQuery(`
+      INSERT INTO dbo.SolicitudesBaja (alumno_id, asignacion_id, estatus)
+      VALUES (@alumnoId, @asignacionId, 'pendiente')
+    `, [
+      { name: "alumnoId", type: sql.Int, value: alumnoId },
+      { name: "asignacionId", type: sql.Int, value: parseInt(asignacionId) }
+    ]);
+
+    return res.status(201).json({ success: true, message: "Solicitud de baja enviada con éxito" });
+  } catch (error) {
+    console.error("Error creating drop request:", error);
+    return res.status(500).json({ message: "No se pudo registrar la solicitud de baja" });
+  }
+};
+
+export const getStudentDropRequests = async (req, res) => {
+  const alumnoId = req.user?.id;
+
+  try {
+    const result = await runQuery(`
+      SELECT asignacion_id, estatus, creado_en
+      FROM dbo.SolicitudesBaja
+      WHERE alumno_id = @alumnoId AND estatus = 'pendiente'
+    `, [{ name: "alumnoId", type: sql.Int, value: alumnoId }]);
+
+    return res.json(result.recordset);
+  } catch (error) {
+    console.error("Error fetching student drop requests:", error);
+    return res.status(500).json({ message: "No se pudieron obtener las solicitudes de baja" });
+  }
+};
+
+export const adminGetDropRequests = async (req, res) => {
+  try {
+    const result = await runQuery(`
+      SELECT 
+        sb.solicitud_id AS id,
+        sb.alumno_id,
+        u.nombre_completo AS alumno_nombre,
+        pa.matricula AS alumno_matricula,
+        sb.asignacion_id,
+        m.nombre AS materia_nombre,
+        g.clave AS grupo_clave,
+        g.semestre AS grupo_semestre,
+        sb.estatus,
+        sb.creado_en
+      FROM dbo.SolicitudesBaja sb
+      JOIN dbo.Usuarios u ON sb.alumno_id = u.usuario_id
+      JOIN dbo.PerfilesAlumnos pa ON u.usuario_id = pa.usuario_id
+      JOIN dbo.AsignacionesDocentes ad ON sb.asignacion_id = ad.asignacion_id
+      JOIN dbo.Materias m ON ad.materia_id = m.materia_id
+      JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+      WHERE sb.estatus = 'pendiente'
+      ORDER BY sb.creado_en DESC;
+    `);
+
+    return res.json(result.recordset);
+  } catch (error) {
+    console.error("Error fetching admin drop requests:", error);
+    return res.status(500).json({ message: "No se pudieron obtener las solicitudes de baja" });
+  }
+};
+
+export const adminApproveDropRequest = async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "ID de solicitud obligatorio" });
+  }
+
+  try {
+    const solicitudId = parseInt(id);
+
+    // Get request details
+    const reqDetail = await runQuery(`
+      SELECT alumno_id, asignacion_id FROM dbo.SolicitudesBaja
+      WHERE solicitud_id = @solicitudId AND estatus = 'pendiente'
+    `, [{ name: "solicitudId", type: sql.Int, value: solicitudId }]);
+
+    if (reqDetail.recordset.length === 0) {
+      return res.status(404).json({ message: "Solicitud de baja no encontrada o ya procesada" });
+    }
+
+    const { alumno_id: alumnoId, asignacion_id: asignacionId } = reqDetail.recordset[0];
+
+    // 1. Delete student attendance records for sessions of this assignment
+    await runQuery(`
+      DELETE ra
+      FROM dbo.RegistrosAsistencia ra
+      JOIN dbo.SesionesAsistencia sa ON ra.sesion_id = sa.sesion_id
+      WHERE ra.alumno_id = @alumnoId AND sa.asignacion_id = @asignacionId
+    `, [
+      { name: "alumnoId", type: sql.Int, value: alumnoId },
+      { name: "asignacionId", type: sql.Int, value: asignacionId }
+    ]);
+
+    // 2. Delete student inscription
+    await runQuery(`
+      DELETE FROM dbo.Inscripciones
+      WHERE alumno_id = @alumnoId AND asignacion_id = @asignacionId
+    `, [
+      { name: "alumnoId", type: sql.Int, value: alumnoId },
+      { name: "asignacionId", type: sql.Int, value: asignacionId }
+    ]);
+
+    // 3. Mark request as approved
+    await runQuery(`
+      UPDATE dbo.SolicitudesBaja
+      SET estatus = 'aprobada', procesado_en = SYSDATETIME()
+      WHERE solicitud_id = @solicitudId
+    `, [{ name: "solicitudId", type: sql.Int, value: solicitudId }]);
+
+    return res.json({ success: true, message: "Solicitud aprobada y alumno desvinculado con éxito" });
+  } catch (error) {
+    console.error("Error approving drop request:", error);
+    return res.status(500).json({ message: "No se pudo procesar la aprobación" });
+  }
+};
+
+export const adminRejectDropRequest = async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "ID de solicitud obligatorio" });
+  }
+
+  try {
+    const solicitudId = parseInt(id);
+
+    // Update request to rejected
+    const result = await runQuery(`
+      UPDATE dbo.SolicitudesBaja
+      SET estatus = 'rechazada', procesado_en = SYSDATETIME()
+      WHERE solicitud_id = @solicitudId AND estatus = 'pendiente'
+    `, [{ name: "solicitudId", type: sql.Int, value: solicitudId }]);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ message: "Solicitud de baja no encontrada o ya procesada" });
+    }
+
+    return res.json({ success: true, message: "Solicitud de baja rechazada con éxito" });
+  } catch (error) {
+    console.error("Error rejecting drop request:", error);
+    return res.status(500).json({ message: "No se pudo procesar el rechazo" });
+  }
+};
+
+export const deleteAlumno = async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "ID de alumno es requerido" });
+  }
+
+  const alumnoId = parseInt(id);
+
+  try {
+    const result = await runQuery(`
+      UPDATE dbo.Usuarios
+      SET activo = 0
+      WHERE usuario_id = @id AND rol_id = 3;
+    `, [
+      { name: "id", type: sql.Int, value: alumnoId }
+    ]);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ message: "Alumno no encontrado o ya desactivado" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Alumno dado de baja del sistema con éxito"
+    });
+  } catch (error) {
+    console.error("Error deactivating alumno:", error);
+    return res.status(500).json({ message: "Error interno al dar de baja al alumno" });
+  }
+};
+
+export const deleteInvitation = async (req, res) => {
+  const { id } = req.params;
+
+  if (!id) {
+    return res.status(400).json({ message: "ID de invitación es requerido" });
+  }
+
+  const invitacionId = parseInt(id);
+
+  try {
+    const result = await runQuery(`
+      DELETE FROM dbo.InvitacionesAlumnos
+      WHERE invitacion_id = @id;
+    `, [
+      { name: "id", type: sql.Int, value: invitacionId }
+    ]);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ message: "Invitación no encontrada" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Invitación cancelada y eliminada con éxito"
+    });
+  } catch (error) {
+    console.error("Error deleting invitation:", error);
+    return res.status(500).json({ message: "Error interno al cancelar la invitación" });
+  }
+};
+
+export const updateAlumno = async (req, res) => {
+  const { id } = req.params;
+  const { nombre, correo, matricula, grupoId } = req.body || {};
+
+  console.log("[updateAlumno] Request parameters:", { id, nombre, correo, matricula, grupoId });
+
+  if (!id) {
+    return res.status(400).json({ message: "ID de alumno es requerido" });
+  }
+
+  if (!nombre || !correo || !matricula) {
+    return res.status(400).json({ message: "Nombre, correo y matrícula son obligatorios" });
+  }
+
+  const alumnoId = parseInt(id);
+
+  try {
+    // 1. Check if email already exists on another user
+    const checkEmail = await runQuery(`
+      SELECT 1 FROM dbo.Usuarios WHERE correo = @correo AND usuario_id <> @currentId;
+    `, [
+      { name: "correo", type: sql.NVarChar, value: correo },
+      { name: "currentId", type: sql.Int, value: alumnoId }
+    ]);
+
+    if (checkEmail.recordset.length > 0) {
+      console.warn("[updateAlumno] Email conflict:", correo);
+      return res.status(409).json({ message: "El correo electrónico ya está registrado por otro usuario" });
+    }
+
+    // 2. Check if matricula already exists on another student
+    const checkMatricula = await runQuery(`
+      SELECT 1 FROM dbo.PerfilesAlumnos WHERE matricula = @matricula AND usuario_id <> @currentId;
+    `, [
+      { name: "matricula", type: sql.VarChar, value: matricula },
+      { name: "currentId", type: sql.Int, value: alumnoId }
+    ]);
+
+    if (checkMatricula.recordset.length > 0) {
+      console.warn("[updateAlumno] Matricula conflict:", matricula);
+      return res.status(409).json({ message: "El número de control (matrícula) ya está registrado por otro alumno" });
+    }
+
+    // 3. Update Usuario (nombre and correo)
+    const resultUser = await runQuery(`
+      UPDATE dbo.Usuarios
+      SET nombre_completo = @nombre, correo = @correo
+      WHERE usuario_id = @id AND rol_id = 3;
+    `, [
+      { name: "id", type: sql.Int, value: alumnoId },
+      { name: "nombre", type: sql.NVarChar, value: nombre },
+      { name: "correo", type: sql.NVarChar, value: correo }
+    ]);
+
+    console.log("[updateAlumno] UPDATE Usuarios rows affected:", resultUser.rowsAffected);
+
+    if (resultUser.rowsAffected[0] === 0) {
+      console.warn("[updateAlumno] No row updated in dbo.Usuarios for id:", alumnoId);
+      return res.status(404).json({ message: "El alumno no existe o no tiene el rol correcto en el sistema" });
+    }
+
+    // 4. Update Perfil (matricula)
+    const resultProfile = await runQuery(`
+      UPDATE dbo.PerfilesAlumnos
+      SET matricula = @matricula
+      WHERE usuario_id = @id;
+    `, [
+      { name: "id", type: sql.Int, value: alumnoId },
+      { name: "matricula", type: sql.VarChar, value: matricula }
+    ]);
+
+    console.log("[updateAlumno] UPDATE PerfilesAlumnos rows affected:", resultProfile.rowsAffected);
+
+    if (resultProfile.rowsAffected[0] === 0) {
+      console.warn("[updateAlumno] No row updated in dbo.PerfilesAlumnos for id:", alumnoId);
+      return res.status(404).json({ message: "No se encontró el perfil de alumno asociado para este usuario" });
+    }
+
+    // 5. If group is changing, reassign enrollment
+    if (grupoId) {
+      const parsedGrupoId = parseInt(grupoId);
+      console.log("[updateAlumno] Reassigning group to:", parsedGrupoId);
+
+      // Verify group exists and get its semester
+      const groupRes = await runQuery(`
+        SELECT semestre FROM dbo.Grupos WHERE grupo_id = @grupoId
+      `, [{ name: "grupoId", type: sql.Int, value: parsedGrupoId }]);
+
+      if (groupRes.recordset.length > 0) {
+        const newSemestre = groupRes.recordset[0].semestre;
+
+        // Check if student's current group is actually different
+        const currentGroupRes = await runQuery(`
+          SELECT TOP 1 ad.grupo_id 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          WHERE i.alumno_id = @alumnoId
+        `, [{ name: "alumnoId", type: sql.Int, value: alumnoId }]);
+
+        const currentGrupoId = currentGroupRes.recordset[0]?.grupo_id;
+        console.log("[updateAlumno] Group transition check:", { currentGrupoId, parsedGrupoId });
+
+        if (currentGrupoId !== parsedGrupoId) {
+          console.log("[updateAlumno] Performing group migration database queries...");
+          
+          // Clean up old attendance records
+          const delAttendance = await runQuery(`
+            DELETE ra
+            FROM dbo.RegistrosAsistencia ra
+            JOIN dbo.SesionesAsistencia sa ON ra.sesion_id = sa.sesion_id
+            WHERE ra.alumno_id = @alumnoId
+          `, [{ name: "alumnoId", type: sql.Int, value: alumnoId }]);
+          console.log("[updateAlumno] Deleted old attendance records:", delAttendance.rowsAffected);
+
+          // Clean up old enrollments
+          const delEnroll = await runQuery(`
+            DELETE FROM dbo.Inscripciones
+            WHERE alumno_id = @alumnoId
+          `, [{ name: "alumnoId", type: sql.Int, value: alumnoId }]);
+          console.log("[updateAlumno] Deleted old enrollments:", delEnroll.rowsAffected);
+
+          // Enroll student in all subjects of the new group
+          const newAsignaciones = await runQuery(`
+            SELECT asignacion_id FROM dbo.AsignacionesDocentes
+            WHERE grupo_id = @grupoId
+          `, [{ name: "grupoId", type: sql.Int, value: parsedGrupoId }]);
+
+          console.log("[updateAlumno] Found new assignments to enroll student in:", newAsignaciones.recordset.length);
+
+          for (const a of newAsignaciones.recordset) {
+            await runQuery(`
+              INSERT INTO dbo.Inscripciones (alumno_id, asignacion_id, estatus)
+              VALUES (@alumnoId, @asignacionId, 'activo')
+            `, [
+              { name: "alumnoId", type: sql.Int, value: alumnoId },
+              { name: "asignacionId", type: sql.Int, value: a.asignacion_id }
+            ]);
+          }
+
+          // Update student's profile semester to match new group
+          const updateSem = await runQuery(`
+            UPDATE dbo.PerfilesAlumnos
+            SET semestre = @semestre
+            WHERE usuario_id = @alumnoId
+          `, [
+            { name: "alumnoId", type: sql.Int, value: alumnoId },
+            { name: "semestre", type: sql.Int, value: newSemestre }
+          ]);
+          console.log("[updateAlumno] Updated profile semester rows affected:", updateSem.rowsAffected);
+        }
+      } else {
+        console.warn("[updateAlumno] Specified group does not exist:", parsedGrupoId);
+      }
+    }
+
+    console.log("[updateAlumno] Alumno updated successfully:", alumnoId);
+    return res.json({
+      success: true,
+      message: "Información del alumno actualizada con éxito"
+    });
+  } catch (error) {
+    console.error("Error updating alumno:", error);
+    return res.status(500).json({ message: "Error interno al actualizar la información del alumno" });
+  }
+};
+
