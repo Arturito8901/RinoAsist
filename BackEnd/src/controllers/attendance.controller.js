@@ -3,7 +3,7 @@ import { runQuery, sql } from "../config/db.js";
 
 const CAMPUS_LAT = 19.648207;
 const CAMPUS_LON = -99.227478;
-const TOLERANCE_RADIUS_METERS = 150;
+const TOLERANCE_RADIUS_METERS = 1000;
 
 function getDistanceInMeters(lat1, lon1, lat2, lon2) {
   const R = 6371e3; // Earth's radius in meters
