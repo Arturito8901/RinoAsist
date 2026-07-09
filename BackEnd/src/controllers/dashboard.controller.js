@@ -3,7 +3,7 @@ import { runQuery, sql } from "../config/db.js";
 const ADMIN_CARDS_QUERY = `
 SELECT
   (SELECT COUNT(*) FROM dbo.PerfilesDocentes pd JOIN dbo.Usuarios u ON u.usuario_id = pd.usuario_id WHERE u.is_debug = 0)        AS total_docentes,
-  (SELECT COUNT(*) FROM dbo.AsignacionesDocentes ad JOIN dbo.Usuarios u ON u.usuario_id = ad.docente_id WHERE u.is_debug = 0)    AS total_grupos,
+  (SELECT COUNT(*) FROM dbo.AsignacionesDocentes ad JOIN dbo.Usuarios u ON u.usuario_id = ad.docente_id WHERE u.is_debug = 0 AND (ad.periodo_id = @periodoId OR (ad.periodo_id IS NULL AND @periodoId IS NULL)))    AS total_grupos,
   (SELECT COUNT(*) FROM dbo.PerfilesAlumnos pa JOIN dbo.Usuarios u ON u.usuario_id = pa.usuario_id WHERE u.is_debug = 0)         AS total_alumnos,
   ISNULL((
     SELECT CAST(
@@ -13,7 +13,9 @@ SELECT
     FROM dbo.SesionesAsistencia sa
     JOIN dbo.RegistrosAsistencia ra ON ra.sesion_id = sa.sesion_id
     JOIN dbo.Usuarios u ON u.usuario_id = ra.alumno_id
+    JOIN dbo.AsignacionesDocentes ad ON ad.asignacion_id = sa.asignacion_id
     WHERE sa.fecha BETWEEN @fechaInicio AND @fechaFin AND u.is_debug = 0
+      AND (ad.periodo_id = @periodoId OR (ad.periodo_id IS NULL AND @periodoId IS NULL))
   ), 0) AS asistencia_promedio;
 `;
 
@@ -62,6 +64,7 @@ WITH TeacherAttendance AS (
   JOIN dbo.RegistrosAsistencia ra ON ra.sesion_id = sa.sesion_id
   JOIN dbo.AsignacionesDocentes TA ON TA.asignacion_id = sa.asignacion_id
   WHERE sa.fecha BETWEEN @fechaInicio AND @fechaFin
+    AND (TA.periodo_id = @periodoId OR (TA.periodo_id IS NULL AND @periodoId IS NULL))
   GROUP BY TA.docente_id, sa.asignacion_id
 )
 SELECT
@@ -69,12 +72,18 @@ SELECT
   U.nombre_completo AS docente,
   U.correo,
   PD.turno,
-  (SELECT COUNT(*) FROM dbo.AsignacionesDocentes TA2 WHERE TA2.docente_id = U.usuario_id) AS grupos,
+  (
+    SELECT COUNT(*) 
+    FROM dbo.AsignacionesDocentes TA2 
+    WHERE TA2.docente_id = U.usuario_id 
+      AND (TA2.periodo_id = @periodoId OR (TA2.periodo_id IS NULL AND @periodoId IS NULL))
+  ) AS grupos,
   ISNULL((
     SELECT COUNT(DISTINCT I.alumno_id)
     FROM dbo.Inscripciones I
     JOIN dbo.AsignacionesDocentes TA3 ON TA3.asignacion_id = I.asignacion_id
     WHERE TA3.docente_id = U.usuario_id
+      AND (TA3.periodo_id = @periodoId OR (TA3.periodo_id IS NULL AND @periodoId IS NULL))
   ), 0) AS alumnos,
   ISNULL(AVG(TAStats.asistencia_pct), 100.0) AS asistencia_promedio,
   ISNULL(SUM(TAStats.total_registros), 0) AS total_registros,
@@ -96,7 +105,15 @@ ORDER BY U.nombre_completo;
 const TEACHER_GROUPS_QUERY = `
 SELECT
   TA.asignacion_id,
-  M.nombre AS materia,
+  CASE 
+    WHEN TA.periodo_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM dbo.PeriodosEscolares PE 
+      WHERE PE.periodo_id = TA.periodo_id 
+        AND (PE.clave LIKE '%Inter%' OR PE.nombre LIKE '%Inter%')
+    )
+    THEN CONCAT(M.nombre, ' (Intersemestral)')
+    ELSE M.nombre 
+  END AS materia,
   M.clave,
   G.clave AS grupo,
   TA.horario,
@@ -112,12 +129,13 @@ JOIN dbo.Grupos G ON TA.grupo_id = G.grupo_id
 LEFT JOIN dbo.Inscripciones I ON I.asignacion_id = TA.asignacion_id
 LEFT JOIN dbo.vwResumenAsistencias VS ON VS.asignacion_id = TA.asignacion_id
 WHERE TA.docente_id = @docenteId
+  AND (TA.periodo_id = @periodoId OR (TA.periodo_id IS NULL AND @periodoId IS NULL))
   AND (
     @busqueda IS NULL OR
     M.nombre LIKE CONCAT('%', @busqueda, '%') OR
     G.clave LIKE CONCAT('%', @busqueda, '%')
   )
-GROUP BY TA.asignacion_id, M.nombre, M.clave, G.clave, TA.horario
+GROUP BY TA.asignacion_id, TA.periodo_id, M.nombre, M.clave, G.clave, TA.horario
 ORDER BY M.nombre;
 `;
 
@@ -130,6 +148,7 @@ FROM dbo.SesionesAsistencia sa
 JOIN dbo.RegistrosAsistencia ra ON ra.sesion_id = sa.sesion_id
 JOIN dbo.AsignacionesDocentes TA ON sa.asignacion_id = TA.asignacion_id
 WHERE TA.docente_id = @docenteId
+  AND (TA.periodo_id = @periodoId OR (TA.periodo_id IS NULL AND @periodoId IS NULL))
   AND sa.fecha >= DATEADD(WEEK, -52, CAST(GETDATE() AS DATE))
 GROUP BY TA.asignacion_id, sa.fecha
 ORDER BY TA.asignacion_id, sa.fecha;
@@ -139,7 +158,15 @@ const TEACHER_SESSIONS_QUERY = `
 SELECT 
   sa.sesion_id AS id,
   FORMAT(sa.fecha, 'yyyy-MM-dd') AS fecha,
-  m.nombre AS materia,
+  CASE 
+    WHEN ad.periodo_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM dbo.PeriodosEscolares PE 
+      WHERE PE.periodo_id = ad.periodo_id 
+        AND (PE.clave LIKE '%Inter%' OR PE.nombre LIKE '%Inter%')
+    )
+    THEN CONCAT(m.nombre, ' (Intersemestral)')
+    ELSE m.nombre 
+  END AS materia,
   CONCAT(m.clave, '-', g.clave) AS grupo,
   CASE 
     WHEN EXISTS (
@@ -154,6 +181,7 @@ JOIN dbo.AsignacionesDocentes ad ON sa.asignacion_id = ad.asignacion_id
 JOIN dbo.Materias m ON ad.materia_id = m.materia_id
 JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
 WHERE ad.docente_id = @docenteId
+  AND (ad.periodo_id = @periodoId OR (ad.periodo_id IS NULL AND @periodoId IS NULL))
 ORDER BY sa.fecha DESC;
 `;
 
@@ -172,7 +200,15 @@ SELECT
   u.usuario_id AS id,
   u.nombre_completo AS name,
   pa.matricula AS matricula,
-  m.nombre AS course,
+  CASE 
+    WHEN ad.periodo_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM dbo.PeriodosEscolares PE 
+      WHERE PE.periodo_id = ad.periodo_id 
+        AND (PE.clave LIKE '%Inter%' OR PE.nombre LIKE '%Inter%')
+    )
+    THEN CONCAT(m.nombre, ' (Intersemestral)')
+    ELSE m.nombre 
+  END AS course,
   CONCAT(m.clave, '-', g.clave) AS groupKey,
   CAST(sga.asistencia_pct AS INT) AS rate,
   CASE 
@@ -186,7 +222,9 @@ LEFT JOIN dbo.PerfilesAlumnos pa ON pa.usuario_id = u.usuario_id
 JOIN dbo.AsignacionesDocentes ad ON sga.asignacion_id = ad.asignacion_id
 JOIN dbo.Materias m ON ad.materia_id = m.materia_id
 JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
-WHERE ad.docente_id = @docenteId AND sga.asistencia_pct < 80.0
+WHERE ad.docente_id = @docenteId
+  AND (ad.periodo_id = @periodoId OR (ad.periodo_id IS NULL AND @periodoId IS NULL))
+  AND sga.asistencia_pct < 80.0
 ORDER BY sga.asistencia_pct ASC;
 `;
 
@@ -207,7 +245,15 @@ WITH SessionStats AS (
 )
 SELECT
   ss.asignacion_id,
-  m.nombre AS materia,
+  CASE 
+    WHEN ad.periodo_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM dbo.PeriodosEscolares PE 
+      WHERE PE.periodo_id = ad.periodo_id 
+        AND (PE.clave LIKE '%Inter%' OR PE.nombre LIKE '%Inter%')
+    )
+    THEN CONCAT(m.nombre, ' (Intersemestral)')
+    ELSE m.nombre 
+  END AS materia,
   g.clave AS grupo,
   u.nombre_completo AS docente,
   ISNULL(ad.horario, '') AS horario,
@@ -225,7 +271,15 @@ ORDER BY ss.asignacion_id, ss.fecha;
 
 const STUDENT_SUBJECTS_QUERY = `
 SELECT
-  M.nombre AS materia,
+  CASE 
+    WHEN TA.periodo_id IS NOT NULL AND EXISTS (
+      SELECT 1 FROM dbo.PeriodosEscolares PE 
+      WHERE PE.periodo_id = TA.periodo_id 
+        AND (PE.clave LIKE '%Inter%' OR PE.nombre LIKE '%Inter%')
+    )
+    THEN CONCAT(M.nombre, ' (Intersemestral)')
+    ELSE M.nombre 
+  END AS materia,
   G.clave  AS grupo,
   U.nombre_completo AS docente,
   TA.asignacion_id,
@@ -239,7 +293,7 @@ LEFT JOIN dbo.SesionesAsistencia sa ON sa.asignacion_id = TA.asignacion_id
 LEFT JOIN dbo.RegistrosAsistencia ra
   ON ra.sesion_id = sa.sesion_id AND ra.alumno_id = I.alumno_id
 WHERE I.alumno_id = @alumnoId
-GROUP BY M.nombre, G.clave, U.nombre_completo, TA.asignacion_id
+GROUP BY TA.periodo_id, M.nombre, G.clave, U.nombre_completo, TA.asignacion_id
 ORDER BY M.nombre;
 `;
 
@@ -268,10 +322,15 @@ SELECT
   m.nombre AS materia_nombre,
   ISNULL(v.asistencia_pct, -1) AS asistencia_promedio
 FROM dbo.Grupos g
-LEFT JOIN dbo.AsignacionesDocentes ad ON ad.grupo_id = g.grupo_id
+LEFT JOIN dbo.AsignacionesDocentes ad ON ad.grupo_id = g.grupo_id AND (ad.periodo_id = @periodoId OR (ad.periodo_id IS NULL AND @periodoId IS NULL))
 LEFT JOIN dbo.Materias m ON m.materia_id = ad.materia_id
 LEFT JOIN dbo.vwResumenAsistencias v ON v.asignacion_id = ad.asignacion_id
 WHERE g.clave <> '*'
+  AND (
+    (@isInter = 1 AND (g.periodo_id IS NULL OR g.periodo_id = @periodoId))
+    OR
+    (@isInter = 0 AND g.periodo_id IS NULL)
+  )
 ORDER BY g.semestre, g.clave, m.nombre;
 `;
 
@@ -391,10 +450,18 @@ export const getAdminSummary = async (req, res) => {
       : ADMIN_SERIES_QUERY_MONTHLY;
 
   try {
+    const activePeriodResult = await runQuery(`
+      SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
+    `);
+    const activePeriod = activePeriodResult.recordset[0];
+    const periodoId = activePeriod?.periodo_id || null;
+    const isInter = activePeriod?.nombre?.toLowerCase().includes("intersemestral") ? 1 : 0;
+
     const [cardsResult, seriesResult, teachersResult, groupsAndAssignmentsResult] = await Promise.all([
       runQuery(ADMIN_CARDS_QUERY, [
         { name: "fechaInicio", type: sql.Date, value: fromValue },
         { name: "fechaFin", type: sql.Date, value: toValue },
+        { name: "periodoId", type: sql.Int, value: periodoId },
       ]),
       runQuery(seriesQuery, [
         { name: "fechaInicio", type: sql.Date, value: fromValue },
@@ -405,8 +472,12 @@ export const getAdminSummary = async (req, res) => {
         { name: "fechaFin", type: sql.Date, value: toValue },
         { name: "busqueda", type: sql.NVarChar, value: busqueda },
         { name: "turno", type: sql.NVarChar, value: turno },
+        { name: "periodoId", type: sql.Int, value: periodoId },
       ]),
-      runQuery(GROUPS_AND_ASSIGNMENTS_QUERY)
+      runQuery(GROUPS_AND_ASSIGNMENTS_QUERY, [
+        { name: "periodoId", type: sql.Int, value: periodoId },
+        { name: "isInter", type: sql.Int, value: isInter }
+      ])
     ]);
 
     // Build semesterDetailedData from groupsAndAssignmentsResult
@@ -585,19 +656,28 @@ export const getTeacherOverview = async (req, res) => {
   }
 
   try {
+    const activePeriodResult = await runQuery(`
+      SELECT TOP 1 periodo_id FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
+    `);
+    const periodoId = activePeriodResult.recordset[0]?.periodo_id || null;
+
     const [groupsResult, seriesResult, sessionsResult, riskStudentsResult] = await Promise.all([
       runQuery(TEACHER_GROUPS_QUERY, [
         { name: "docenteId", type: sql.Int, value: targetDocenteId },
         { name: "busqueda", type: sql.NVarChar, value: q },
+        { name: "periodoId", type: sql.Int, value: periodoId },
       ]),
       runQuery(TEACHER_SERIES_QUERY, [
         { name: "docenteId", type: sql.Int, value: targetDocenteId },
+        { name: "periodoId", type: sql.Int, value: periodoId },
       ]),
       runQuery(TEACHER_SESSIONS_QUERY, [
         { name: "docenteId", type: sql.Int, value: targetDocenteId },
+        { name: "periodoId", type: sql.Int, value: periodoId },
       ]),
       runQuery(TEACHER_RISK_STUDENTS_QUERY, [
         { name: "docenteId", type: sql.Int, value: targetDocenteId },
+        { name: "periodoId", type: sql.Int, value: periodoId },
       ]),
     ]);
 

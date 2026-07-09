@@ -19,6 +19,12 @@ export default function Dashboard() {
       return;
     }
     setUser(currentUser);
+    
+    // Fetch active period from database asynchronously to cache in localStorage
+    api.getActivePeriod().catch(err => {
+      console.warn("Could not load active school cycle from server, using local fallback:", err);
+    });
+
     setLoading(false);
   }, [navigate]);
 

@@ -1,28 +1,81 @@
-import { runQuery, sql } from "../config/db.js";
+import { runQuery, sql, getPool } from "../config/db.js";
 
 export const getAlumnosOverview = async (req, res) => {
   try {
+    const activePeriodResult = await runQuery(`
+      SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
+    `);
+    const activePeriod = activePeriodResult.recordset[0];
+    const activePeriodId = activePeriod?.periodo_id;
+
+    const allPeriodsResult = await runQuery(`
+      SELECT periodo_id, nombre FROM dbo.PeriodosEscolares ORDER BY fecha_inicio ASC
+    `);
+    const regularPeriods = allPeriodsResult.recordset.filter(p => !p.nombre.toLowerCase().includes("intersemestral"));
+    const periodIndexMap = new Map();
+    regularPeriods.forEach((p, idx) => {
+      periodIndexMap.set(p.periodo_id, idx);
+    });
+
     const alumnosQuery = `
       SELECT 
         u.usuario_id AS id, 
         u.nombre_completo AS nombre, 
         u.correo, 
         pa.matricula, 
-        pa.semestre,
+        pa.semestre AS base_semestre,
+        (
+          SELECT TOP 1 g.clave 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND ad.periodo_id = @activePeriodId
+        ) AS active_grupo_clave,
+        (
+          SELECT TOP 1 g.grupo_id 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND ad.periodo_id = @activePeriodId
+        ) AS active_grupo_id,
+        (
+          SELECT TOP 1 g.semestre 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND ad.periodo_id = @activePeriodId
+        ) AS active_grupo_semestre,
         (
           SELECT TOP 1 g.clave 
           FROM dbo.Inscripciones i 
           JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
           JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
           WHERE i.alumno_id = u.usuario_id
-        ) AS grupo_clave,
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_clave,
         (
           SELECT TOP 1 g.grupo_id 
           FROM dbo.Inscripciones i 
           JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
           JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
           WHERE i.alumno_id = u.usuario_id
-        ) AS grupo_id
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_id,
+        (
+          SELECT TOP 1 g.semestre 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_semestre,
+        (
+          SELECT TOP 1 ad.periodo_id 
+          FROM dbo.Inscripciones i 
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          WHERE i.alumno_id = u.usuario_id
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_periodo_id
       FROM dbo.Usuarios u
       JOIN dbo.PerfilesAlumnos pa ON u.usuario_id = pa.usuario_id
       WHERE u.activo = 1 AND u.is_debug = 0
@@ -43,13 +96,54 @@ export const getAlumnosOverview = async (req, res) => {
       ORDER BY i.creado_en DESC;
     `;
 
-    const [alumnosResult, invitacionesResult] = await Promise.all([
-      runQuery(alumnosQuery),
-      runQuery(invitacionesQuery)
+    const [alumnosResult, invitacionesResult, groupsResult] = await Promise.all([
+      runQuery(alumnosQuery, [{ name: "activePeriodId", type: sql.Int, value: activePeriodId }]),
+      runQuery(invitacionesQuery),
+      runQuery("SELECT grupo_id, clave, semestre FROM dbo.Grupos")
     ]);
 
+    const groupMap = new Map();
+    groupsResult.recordset.forEach(g => {
+      groupMap.set(g.clave.toLowerCase().trim(), g);
+    });
+
+    const mappedAlumnos = alumnosResult.recordset.map(student => {
+      let grupo_clave = student.active_grupo_clave;
+      let grupo_id = student.active_grupo_id;
+      let semestre = student.active_grupo_semestre || student.base_semestre;
+
+      if (!student.active_grupo_clave && student.last_grupo_clave && student.last_grupo_periodo_id) {
+        const lastIdx = periodIndexMap.get(student.last_grupo_periodo_id);
+        const activeIdx = periodIndexMap.get(activePeriodId);
+
+        if (lastIdx !== undefined && activeIdx !== undefined) {
+          const diff = activeIdx - lastIdx;
+          semestre = student.last_grupo_semestre + diff;
+          if (semestre > 9) semestre = 9;
+          if (semestre < 1) semestre = 1;
+
+          const projectedKey = getSemesterGroupKeyForSemester(student.last_grupo_clave, semestre);
+          const projectedGroupObj = groupMap.get(projectedKey.toLowerCase().trim());
+          if (projectedGroupObj) {
+            grupo_clave = projectedGroupObj.clave;
+            grupo_id = projectedGroupObj.grupo_id;
+          }
+        }
+      }
+
+      return {
+        id: student.id,
+        nombre: student.nombre,
+        correo: student.correo,
+        matricula: student.matricula,
+        semestre,
+        grupo_clave,
+        grupo_id
+      };
+    });
+
     return res.json({
-      alumnos: alumnosResult.recordset,
+      alumnos: mappedAlumnos,
       invitaciones: invitacionesResult.recordset
     });
   } catch (error) {
@@ -469,4 +563,151 @@ export const updateAlumno = async (req, res) => {
     return res.status(500).json({ message: "Error interno al actualizar la información del alumno" });
   }
 };
+
+export const syncStudentEnrollmentsForActivePeriod = async () => {
+  const pool = await getPool();
+  try {
+    const activePeriodResult = await pool.request().query(`
+      SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
+    `);
+    const activePeriod = activePeriodResult.recordset[0];
+    if (!activePeriod) return;
+    const activePeriodId = activePeriod.periodo_id;
+    const isInter = activePeriod.nombre?.toLowerCase().includes("intersemestral");
+
+    if (isInter) return;
+
+    const studentsResult = await pool.request().query(`
+      SELECT u.usuario_id, pa.semestre
+      FROM dbo.Usuarios u
+      JOIN dbo.PerfilesAlumnos pa ON u.usuario_id = pa.usuario_id
+      WHERE u.activo = 1 AND u.rol_id = 3
+    `);
+
+    for (const student of studentsResult.recordset) {
+      try {
+        const studentId = student.usuario_id;
+        const currentSemestre = student.semestre;
+
+        const lastEnrollResult = await pool.request()
+          .input("studentId", sql.Int, studentId)
+          .input("activePeriodId", sql.Int, activePeriodId)
+          .query(`
+            SELECT TOP 1 g.clave, g.grupo_id, g.turno, g.carrera_id, ad.periodo_id, g.semestre AS grupo_semestre
+            FROM dbo.Inscripciones i
+            JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+            JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+            WHERE i.alumno_id = @studentId AND ad.periodo_id < @activePeriodId
+            ORDER BY ad.periodo_id DESC
+          `);
+
+        if (lastEnrollResult.recordset.length === 0) continue;
+
+        const lastEnroll = lastEnrollResult.recordset[0];
+        const oldKey = lastEnroll.clave;
+        const oldSemestre = lastEnroll.grupo_semestre;
+
+        const nextSemester = oldSemestre + 1;
+
+        if (nextSemester > 9) {
+          await pool.request()
+            .input("studentId", sql.Int, studentId)
+            .query("UPDATE dbo.Usuarios SET activo = 0 WHERE usuario_id = @studentId");
+          console.log(`[student promotion] Student ${studentId} graduated.`);
+          continue;
+        }
+
+        if (currentSemestre !== nextSemester) {
+          await pool.request()
+            .input("studentId", sql.Int, studentId)
+            .input("semester", sql.Int, nextSemester)
+            .query("UPDATE dbo.PerfilesAlumnos SET semestre = @semester WHERE usuario_id = @studentId");
+        }
+
+        const nextKey = getNextSemesterGroupKey(oldKey);
+        if (!nextKey) continue;
+
+        let newGroupId = null;
+        const targetGroupResult = await pool.request()
+          .input("clave", sql.VarChar, nextKey)
+          .query("SELECT grupo_id FROM dbo.Grupos WHERE clave = @clave");
+
+        if (targetGroupResult.recordset.length > 0) {
+          newGroupId = targetGroupResult.recordset[0].grupo_id;
+        } else {
+          const insertGroup = await pool.request()
+            .input("clave", sql.VarChar, nextKey)
+            .input("semestre", sql.TinyInt, nextSemester)
+            .input("turno", sql.VarChar, lastEnroll.turno || 'Matutino')
+            .input("carreraId", sql.Int, lastEnroll.carrera_id)
+            .query(`
+              INSERT INTO dbo.Grupos (clave, semestre, turno, cupo, carrera_id)
+              OUTPUT INSERTED.grupo_id
+              VALUES (@clave, @semestre, @turno, 30, @carreraId)
+            `);
+          newGroupId = insertGroup.recordset[0].grupo_id;
+        }
+
+        if (newGroupId) {
+          const newAsignaciones = await pool.request()
+            .input("groupId", sql.Int, newGroupId)
+            .input("periodId", sql.Int, activePeriodId)
+            .query(`
+              SELECT asignacion_id FROM dbo.AsignacionesDocentes
+              WHERE grupo_id = @groupId AND periodo_id = @periodId
+            `);
+
+          for (const a of newAsignaciones.recordset) {
+            const check = await pool.request()
+              .input("studentId", sql.Int, studentId)
+              .input("asignacionId", sql.Int, a.asignacion_id)
+              .query("SELECT 1 FROM dbo.Inscripciones WHERE alumno_id = @studentId AND asignacion_id = @asignacionId");
+
+            if (check.recordset.length === 0) {
+              await pool.request()
+                .input("studentId", sql.Int, studentId)
+                .input("asignacionId", sql.Int, a.asignacion_id)
+                .query(`
+                  INSERT INTO dbo.Inscripciones (alumno_id, asignacion_id, estatus)
+                  VALUES (@studentId, @asignacionId, 'activo')
+                `);
+            }
+          }
+        }
+      } catch (studentError) {
+        console.error(`[student promotion] Error processing student ID ${student.usuario_id}:`, studentError);
+      }
+    }
+  } catch (error) {
+    console.error("Error in syncStudentEnrollmentsForActivePeriod:", error);
+  }
+};
+
+function getNextSemesterGroupKey(oldKey) {
+  const match = oldKey.match(/\d+/);
+  if (!match) return null;
+  const digits = match[0];
+  if (digits.length < 2) return null;
+  
+  const semIndex = digits.length - 2;
+  const semDigit = parseInt(digits[semIndex]);
+  if (isNaN(semDigit)) return null;
+  
+  const nextSemDigit = semDigit + 1;
+  const nextDigits = digits.substring(0, semIndex) + nextSemDigit + digits.substring(semIndex + 1);
+  
+  return oldKey.replace(digits, nextDigits);
+}
+
+function getSemesterGroupKeyForSemester(oldKey, targetSemester) {
+  const match = oldKey.match(/\d+/);
+  if (!match) return oldKey;
+  const digits = match[0];
+  if (digits.length < 2) return oldKey;
+  
+  const semIndex = digits.length - 2;
+  const nextDigits = digits.substring(0, semIndex) + targetSemester + digits.substring(semIndex + 1);
+  
+  return oldKey.replace(digits, nextDigits);
+}
 

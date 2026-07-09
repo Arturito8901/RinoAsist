@@ -10,6 +10,7 @@ import attendanceRoutes from "./routes/attendance.routes.js";
 import assignmentsRoutes from "./routes/assignments.routes.js";
 import docentesRoutes from "./routes/docentes.routes.js";
 import alumnosRoutes from "./routes/alumnos.routes.js";
+import periodosRoutes from "./routes/periodos.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,9 +19,11 @@ dotenv.config({ path: path.resolve(__dirname, "../.env") });
 
 const app = express();
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const allowedOrigins = [
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
+  !isProduction && "http://localhost:5173",
+  !isProduction && "http://127.0.0.1:5173",
   process.env.FRONTEND_URL,
   ...(process.env.CLIENT_ORIGINS?.split(",") || []),
 ].filter(Boolean).map((origin) => origin.trim());
@@ -28,6 +31,8 @@ const allowedOrigins = [
 const isAllowedOrigin = (origin) => {
   if (!origin) return true;
   if (allowedOrigins.includes("*") || allowedOrigins.includes(origin)) return true;
+
+  if (isProduction) return false;
 
   try {
     const { hostname, protocol } = new URL(origin);
@@ -76,6 +81,7 @@ app.use("/api/attendance", attendanceRoutes);
 app.use("/api/assignments", assignmentsRoutes);
 app.use("/api/docentes", docentesRoutes);
 app.use("/api/alumnos", alumnosRoutes);
+app.use("/api/periodos", periodosRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Ruta no encontrada" });

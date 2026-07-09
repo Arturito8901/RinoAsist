@@ -21,7 +21,12 @@ const getBaseUrl = () => {
 
 const BASE_URL = getBaseUrl();
 
-export const getSchoolCycle = (date = new Date()) => {
+let cachedSchoolCycle = localStorage.getItem('active_school_cycle') || null;
+
+export const getSchoolCycle = () => {
+  if (cachedSchoolCycle) return cachedSchoolCycle;
+  
+  const date = new Date();
   const year = date.getFullYear();
   const month = date.getMonth();
   
@@ -32,6 +37,11 @@ export const getSchoolCycle = (date = new Date()) => {
   } else {
     return `${year}-2`;
   }
+};
+
+export const setSchoolCycleCache = (cycleClave) => {
+  cachedSchoolCycle = cycleClave;
+  localStorage.setItem('active_school_cycle', cycleClave);
 };
 
 const getHeaders = () => {
@@ -63,6 +73,175 @@ const normalizeUser = (user) => {
 
 export const api = {
   getSchoolCycle,
+  setSchoolCycleCache,
+
+  // --- PERIODS / SCHOOL CYCLES & EXCEL IMPORT ---
+  getPeriodos: async () => {
+    const res = await fetch(`${BASE_URL}/periodos`, {
+      method: 'GET',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al obtener los ciclos escolares');
+    }
+    return await res.json();
+  },
+
+  getActivePeriod: async () => {
+    const res = await fetch(`${BASE_URL}/periodos/active`, {
+      method: 'GET',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al obtener el ciclo escolar activo');
+    }
+    const data = await res.json();
+    if (data && data.clave) {
+      setSchoolCycleCache(data.clave);
+    }
+    return data;
+  },
+
+  createPeriodo: async (periodData) => {
+    const res = await fetch(`${BASE_URL}/periodos`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(periodData)
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al crear el ciclo escolar');
+    }
+    return await res.json();
+  },
+
+  activatePeriodo: async (id) => {
+    const res = await fetch(`${BASE_URL}/periodos/${id}/activate`, {
+      method: 'PUT',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al activar el ciclo escolar');
+    }
+    const data = await res.json();
+    await api.getActivePeriod();
+    return data;
+  },
+
+  setActivePeriodoByClave: async (clave) => {
+    const res = await fetch(`${BASE_URL}/periodos/set-active`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ clave })
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al alternar el ciclo escolar');
+    }
+    const data = await res.json();
+    await api.getActivePeriod();
+    return data;
+  },
+
+  importAssignments: async (file, periodoId) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('periodoId', periodoId);
+
+    const token = localStorage.getItem('token');
+    const headers = {
+      'X-Frontend-Origin': window.location.origin,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+
+    const res = await fetch(`${BASE_URL}/assignments/import`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al importar horarios');
+    }
+    return await res.json();
+  },
+
+  getIntersemestralClasses: async () => {
+    const res = await fetch(`${BASE_URL}/assignments/intersemestral`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al obtener materias intersemestrales');
+    }
+    return await res.json();
+  },
+
+  getIntersemestralStudents: async (id) => {
+    const res = await fetch(`${BASE_URL}/assignments/intersemestral/${id}/alumnos`, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al obtener alumnos inscritos');
+    }
+    return await res.json();
+  },
+
+  enrollStudentIntersemestral: async (alumnoId, asignacionId) => {
+    const res = await fetch(`${BASE_URL}/assignments/intersemestral/enroll`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ alumnoId, asignacionId })
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al inscribir alumno');
+    }
+    return await res.json();
+  },
+
+  deregisterStudentIntersemestral: async (alumnoId, asignacionId) => {
+    const res = await fetch(`${BASE_URL}/assignments/intersemestral/enroll`, {
+      method: 'DELETE',
+      headers: getHeaders(),
+      body: JSON.stringify({ alumnoId, asignacionId })
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al desvincular alumno');
+    }
+    return await res.json();
+  },
+
+  updateIntersemestralCupo: async (id, cupo) => {
+    const res = await fetch(`${BASE_URL}/assignments/intersemestral/${id}/cupo`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify({ cupo })
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al actualizar cupo límite');
+    }
+    return await res.json();
+  },
+
+  clearIntersemestralClasses: async () => {
+    const res = await fetch(`${BASE_URL}/assignments/intersemestral/clear`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al vaciar materias intersemestrales');
+    }
+    return await res.json();
+  },
+
   // --- AUTHENTICATION ---
   login: async (email, password) => {
     
@@ -648,6 +827,19 @@ export const api = {
   if (!res.ok) throw new Error('Error al obtener opciones de asignación');
   return await res.json();
 
+  },
+
+  createGroup: async (groupData) => {
+    const res = await fetch(`${BASE_URL}/assignments/groups`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(groupData)
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al crear grupo');
+    }
+    return await res.json();
   },
 
   createAssignment: async (assignmentData) => {

@@ -176,5 +176,5 @@ DECLARE @pass NVARCHAR(255) = '$2b$10$AEhHCVaOXX2Wlxj37ZR3FO/SLKN7l9UkM54lGSHGaz
 
 INSERT INTO dbo.Usuarios (rol_id, nombre_completo, correo, password_hash)
 VALUES
-    (1, 'Administrador TESCI', 'admin@tesci.edu.mx', @pass);
+    (1, 'Administrador TESCI', 'sistemas@cuautitlan.tecnm.mx', @pass);
 GO

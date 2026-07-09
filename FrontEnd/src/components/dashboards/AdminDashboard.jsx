@@ -18,7 +18,7 @@ import {
   LogOut, Calendar, Users, QrCode, 
   TrendingUp, AlertTriangle, RefreshCw, 
   ShieldAlert, UserCheck, Layers, ChevronDown, FileText, Download, Mail, BookOpen, Trash2, UserX,
-  Clock, CheckCircle2, CheckCircle, Edit, Lock, Unlock
+  Clock, CheckCircle2, CheckCircle, Edit, Lock, Unlock, CalendarRange, UploadCloud, FileSpreadsheet
 } from 'lucide-react';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -95,6 +95,325 @@ export default function AdminDashboard({ user }) {
   const [activeTab, setActiveTab] = useState('resumen');
   const [selectedWeek, setSelectedWeek] = useState('w1');
   const [expandedSemesters, setExpandedSemesters] = useState({});
+
+  const [isCycleDropdownOpen, setIsCycleDropdownOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [importingExcel, setImportingExcel] = useState(false);
+  const [importStats, setImportStats] = useState(null);
+  const [importError, setImportError] = useState('');
+  const [importSuccess, setImportSuccess] = useState(false);
+  const [periodosList, setPeriodosList] = useState([]);
+  const [selectedImportPeriodoId, setSelectedImportPeriodoId] = useState('');
+
+  // Intersemestral states
+  const [interClasses, setInterClasses] = useState([]);
+  const [selectedInterClassId, setSelectedInterClassId] = useState(null);
+  const [interStudents, setInterStudents] = useState([]);
+  const [studentSearchQuery, setStudentSearchQuery] = useState('');
+  const [studentSearchResults, setStudentSearchResults] = useState([]);
+  const [loadingInterData, setLoadingInterData] = useState(false);
+  const [editingCupoId, setEditingCupoId] = useState(null);
+  const [editingCupoValue, setEditingCupoValue] = useState(30);
+  const [editingHorarioId, setEditingHorarioId] = useState(null);
+  const [editingHorarioValue, setEditingHorarioValue] = useState('');
+  const [showAllTeachersInInter, setShowAllTeachersInInter] = useState(false);
+  const [allAlumnosList, setAllAlumnosList] = useState([]);
+
+  const getCycleSafeStr = () => {
+    const cycle = getSchoolCycle();
+    return typeof cycle === 'string' ? cycle : '';
+  };
+
+  const isIntersemestral = getCycleSafeStr().toUpperCase().includes("INTER");
+
+
+  const getAvailableCycles = (currentClave) => {
+    const baseClave = "2026-1";
+    const cycles = [baseClave];
+    let tempClave = baseClave;
+    
+    let safetyCounter = 0;
+    let targetFutureCycles = 2;
+    let foundCurrent = (tempClave === currentClave);
+    let futureCount = 0;
+
+    while (safetyCounter < 50) {
+      if (foundCurrent) {
+        futureCount++;
+        if (futureCount > targetFutureCycles) {
+          break;
+        }
+      }
+
+      const isInter = tempClave.toUpperCase().includes("INTER");
+      const yearMatch = tempClave.match(/\d{4}/);
+      const year = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear();
+      
+      if (isInter) {
+        if (tempClave.endsWith("-1") || tempClave.endsWith(" 1")) {
+          tempClave = `${year}-2`;
+        } else {
+          tempClave = `${year + 1}-1`;
+        }
+      } else {
+        if (tempClave.endsWith("-1") || tempClave.endsWith(" 1")) {
+          tempClave = `Inter ${year}-1`;
+        } else {
+          tempClave = `Inter ${year}-2`;
+        }
+      }
+
+      if (!cycles.includes(tempClave)) {
+        cycles.push(tempClave);
+      }
+
+      if (tempClave === currentClave) {
+        foundCurrent = true;
+      }
+      
+      safetyCounter++;
+    }
+
+    if (!cycles.includes(currentClave) && currentClave) {
+      cycles.unshift(currentClave);
+    }
+
+    return cycles;
+  };
+
+  const schoolCyclesList = getAvailableCycles(getSchoolCycle());
+
+  // Load intersemestral classes
+  const loadIntersemestralData = async () => {
+    if (!isIntersemestral) return;
+    setLoadingInterData(true);
+    try {
+      const classes = await api.getIntersemestralClasses();
+      setInterClasses(classes);
+      
+      if (classes.length > 0) {
+        setSelectedInterClassId(prev => {
+          if (prev && classes.some(c => c.id === prev)) return prev;
+          return classes[0].id;
+        });
+      } else {
+        setSelectedInterClassId(null);
+      }
+    } catch (err) {
+      console.error("Error loading intersemestral classes:", err);
+    } finally {
+      setLoadingInterData(false);
+    }
+  };
+
+  const refreshDashboardData = async () => {
+    try {
+      const summaryData = await api.getAdminSummary();
+      setAdminData(summaryData);
+      if (adminSelectedTeacherId) {
+        const details = await api.getTeacherOverview(null, adminSelectedTeacherId);
+        setAdminTeacherDetail(details);
+      }
+    } catch (err) {
+      console.error("Error refreshing dashboard data:", err);
+    }
+  };
+
+  // Load classes on cycle/tab change
+  useEffect(() => {
+    if (isIntersemestral && activeTab === 'resumen') {
+      loadIntersemestralData();
+      
+      // Load all students for the search autocomplete
+      api.getAlumnosOverview()
+        .then(data => {
+          const list = Array.isArray(data) ? data : (data.alumnos || []);
+          setAllAlumnosList(list);
+        })
+        .catch(err => console.error("Error loading all alumnos:", err));
+    }
+  }, [isIntersemestral, activeTab]);
+
+  // Load students for selected class
+  useEffect(() => {
+    if (isIntersemestral && selectedInterClassId) {
+      api.getIntersemestralStudents(selectedInterClassId)
+        .then(data => setInterStudents(data))
+        .catch(err => console.error("Error loading class students:", err));
+    } else {
+      setInterStudents([]);
+    }
+  }, [selectedInterClassId, isIntersemestral]);
+
+  // Client-side search autocomplete filter
+  useEffect(() => {
+    if (studentSearchQuery.trim().length > 1) {
+      const q = studentSearchQuery.toLowerCase();
+      const filtered = allAlumnosList.filter(a => 
+        (a.name || '').toLowerCase().includes(q) || 
+        (a.email || '').toLowerCase().includes(q) || 
+        (a.matricula || '').toLowerCase().includes(q)
+      );
+      setStudentSearchResults(filtered.slice(0, 5));
+    } else {
+      setStudentSearchResults([]);
+    }
+  }, [studentSearchQuery, allAlumnosList]);
+
+
+  // Enroll student
+  const handleEnrollStudent = async (alumno) => {
+    if (!selectedInterClassId) return;
+    
+    const isEnrolled = interStudents.some(s => s.id === alumno.id);
+    if (isEnrolled) {
+      alert("El alumno ya está inscrito en esta materia.");
+      return;
+    }
+
+    const currentClass = interClasses.find(c => c.id === selectedInterClassId);
+    if (currentClass && currentClass.alumnos_inscritos >= currentClass.grupo_cupo) {
+      alert(`No se puede inscribir: Cupo límite de ${currentClass.grupo_cupo} alcanzado.`);
+      return;
+    }
+
+    try {
+      await api.enrollStudentIntersemestral(alumno.id, selectedInterClassId);
+      setStudentSearchQuery('');
+      setStudentSearchResults([]);
+      await loadIntersemestralData();
+    } catch (err) {
+      alert(err.message || 'Error al inscribir al alumno');
+    }
+  };
+
+  // Deregister student
+  const handleDeregisterStudent = async (alumnoId) => {
+    if (!selectedInterClassId) return;
+    if (!window.confirm("¿Estás seguro de que deseas desvincular a este alumno de la materia?")) return;
+
+    try {
+      await api.deregisterStudentIntersemestral(alumnoId, selectedInterClassId);
+      await loadIntersemestralData();
+      await refreshDashboardData();
+    } catch (err) {
+      alert(err.message || 'Error al desvincular al alumno');
+    }
+  };
+
+  // Save capacity
+  const handleSaveCupo = async (classId) => {
+    if (editingCupoValue === undefined || editingCupoValue < 1) {
+      alert("El cupo mínimo es 1.");
+      return;
+    }
+    
+    try {
+      await api.updateIntersemestralCupo(classId, editingCupoValue);
+      setEditingCupoId(null);
+      await loadIntersemestralData();
+      await refreshDashboardData();
+    } catch (err) {
+      alert(err.message || 'Error al actualizar cupo');
+    }
+  };
+
+  // Save schedule (horario)
+  const handleSaveHorario = async (classId) => {
+    if (!editingHorarioValue || !editingHorarioValue.trim()) {
+      alert("Por favor introduce un horario válido.");
+      return;
+    }
+    
+    try {
+      await api.updateAssignment(classId, editingHorarioValue);
+      setEditingHorarioId(null);
+      await loadIntersemestralData();
+      await refreshDashboardData();
+    } catch (err) {
+      alert(err.message || 'Error al actualizar el horario');
+    }
+  };
+
+  // Delete intersemestral class
+  const handleDeleteInterClass = async (classId, materiaNombre) => {
+    if (!window.confirm(`¿Estás seguro de que deseas eliminar la materia "${materiaNombre}" de este periodo intersemestral? Esto eliminará también todas las inscripciones asociadas.`)) {
+      return;
+    }
+    try {
+      await api.deleteAssignment(classId);
+      await loadIntersemestralData();
+      await refreshDashboardData();
+      if (selectedInterClassId === classId) {
+        setSelectedInterClassId(null);
+      }
+    } catch (err) {
+      alert(err.message || 'Error al eliminar la materia');
+    }
+  };
+
+  // Clear all intersemestral classes
+  const handleClearAllInterClasses = async () => {
+    if (!window.confirm("¡ATENCIÓN! Estás a punto de eliminar TODOS los horarios, materias y asignaciones cargadas en este ciclo de golpe. Esto también eliminará a todos los alumnos inscritos de sus clases correspondientes. ¿Deseas continuar?")) {
+      return;
+    }
+    
+    try {
+      await api.clearIntersemestralClasses();
+      setSelectedInterClassId(null);
+      await loadIntersemestralData();
+      await refreshDashboardData();
+      alert("Se han eliminado todos los horarios y asignaciones del ciclo escolar activo con éxito.");
+    } catch (err) {
+      alert(err.message || 'Error al vaciar materias del periodo activo');
+    }
+  };
+
+  const handleCycleChange = async (cycleClave) => {
+    try {
+      setLoading(true);
+      await api.setActivePeriodoByClave(cycleClave);
+      window.location.reload();
+    } catch (err) {
+      alert(err.message || 'Error al cambiar de ciclo escolar');
+      setLoading(false);
+    }
+  };
+
+  const handleImportHorarios = async (e) => {
+    e.preventDefault();
+    if (!importFile) {
+      setImportError('Por favor selecciona un archivo Excel');
+      return;
+    }
+    if (!selectedImportPeriodoId) {
+      setImportError('Por favor selecciona el ciclo escolar destino');
+      return;
+    }
+
+    setImportingExcel(true);
+    setImportError('');
+    setImportSuccess(false);
+    setImportStats(null);
+
+    try {
+      const result = await api.importAssignments(importFile, selectedImportPeriodoId);
+      setImportSuccess(true);
+      setImportStats(result.stats);
+      setImportFile(null);
+      
+      const fileInput = document.getElementById('excel-file-input-modal');
+      if (fileInput) fileInput.value = '';
+
+      const data = await api.getAdminSummary({ search: adminSearch, shift: adminShift, week: selectedWeek });
+      setAdminData(data);
+    } catch (err) {
+      setImportError(err.message || 'Error al procesar la importación');
+    } finally {
+      setImportingExcel(false);
+    }
+  };
 
   const toggleSemesterExpand = (semesterName) => {
     setExpandedSemesters(prev => ({
@@ -923,6 +1242,23 @@ export default function AdminDashboard({ user }) {
   const [adminTeacherDetail, setAdminTeacherDetail] = useState(null);
   const [loadingTeacherDetail, setLoadingTeacherDetail] = useState(false);
 
+  const displayedDocentes = useMemo(() => {
+    if (!adminData?.docentes) return [];
+    if (!isIntersemestral || showAllTeachersInInter) return adminData.docentes;
+    const activeTeacherIds = new Set(interClasses.map(c => c.docente_id));
+    return adminData.docentes.filter(d => activeTeacherIds.has(d.docente_id));
+  }, [adminData?.docentes, isIntersemestral, interClasses, showAllTeachersInInter]);
+
+  // Adjust selected teacher based on filtered list in Intersemestral
+  useEffect(() => {
+    if (isIntersemestral && displayedDocentes.length > 0) {
+      const isSelectedValid = displayedDocentes.some(d => d.docente_id === adminSelectedTeacherId);
+      if (!isSelectedValid) {
+        setAdminSelectedTeacherId(displayedDocentes[0].docente_id);
+      }
+    }
+  }, [displayedDocentes, adminSelectedTeacherId, isIntersemestral]);
+
   const [showRiskModal, setShowRiskModal] = useState(false);
   const [reminderToast, setReminderToast] = useState({ show: false, teacherName: '' });
   const [showEditTeacherModal, setShowEditTeacherModal] = useState(false);
@@ -1002,6 +1338,17 @@ export default function AdminDashboard({ user }) {
   const [quickAssignmentError, setQuickAssignmentError] = useState('');
   const [savingClassEdit, setSavingClassEdit] = useState(false);
   const [classEditError, setClassEditError] = useState('');
+
+  // Temporary group creation state variables
+  const [showCreateTempGroupModal, setShowCreateTempGroupModal] = useState(false);
+  const [tempGroupClave, setTempGroupClave] = useState('');
+  const [tempGroupTurno, setTempGroupTurno] = useState('Matutino');
+  const [tempGroupCupo, setTempGroupCupo] = useState(30);
+  const [tempGroupSemestre, setTempGroupSemestre] = useState(1);
+  const [tempGroupTeacherId, setTempGroupTeacherId] = useState('');
+  const [tempGroupSubjectId, setTempGroupSubjectId] = useState('');
+  const [savingTempGroup, setSavingTempGroup] = useState(false);
+  const [tempGroupError, setTempGroupError] = useState('');
   const [resizingData, setResizingData] = useState(null);
 
   // Local transaction states for editing session safety
@@ -1176,12 +1523,14 @@ export default function AdminDashboard({ user }) {
       try {
         const options = await api.getAssignmentOptions();
         setAssignmentOptions(options);
+        return options;
       } catch (err) {
         console.error("Error loading assignment options:", err);
       } finally {
         setLoadingAssignmentOptions(false);
       }
     }
+    return assignmentOptions;
   };
 
   const handleStartEditing = () => {
@@ -1361,10 +1710,21 @@ export default function AdminDashboard({ user }) {
 
   const handleCellDoubleClick = async (day, hour) => {
     if (!isEditingSchedule) return;
-    await ensureAssignmentOptions();
+    const opts = await ensureAssignmentOptions();
     setSelectedSlotForQuickAssign({ day, hour });
-    setQuickAssignSubjectId('');
-    setQuickAssignGroupId('');
+    
+    let defaultSubjectId = '';
+    let defaultGroupId = '';
+    
+    if (isIntersemestral && opts) {
+      const interSub = opts.materias?.find(m => m.nombre === 'Intersemestral');
+      if (interSub) defaultSubjectId = interSub.id || interSub.materia_id;
+      const interGrp = opts.grupos?.find(g => g.clave === 'Intersemestral');
+      if (interGrp) defaultGroupId = interGrp.id || interGrp.grupo_id;
+    }
+
+    setQuickAssignSubjectId(defaultSubjectId);
+    setQuickAssignGroupId(defaultGroupId);
     setQuickAssignDuration(2);
     setQuickAssignmentError('');
     setShowQuickAssignModal(true);
@@ -1643,6 +2003,42 @@ export default function AdminDashboard({ user }) {
     classData: null
   });
 
+  const getFilteredMateriasOptions = () => {
+    if (!assignmentOptions.materias) return [];
+    if (!isIntersemestral) return assignmentOptions.materias;
+    const genericSub = assignmentOptions.materias.find(m => m.nombre === 'Intersemestral');
+    const activeSubIds = new Set(interClasses.map(c => c.materia_id));
+    const activeSubs = assignmentOptions.materias.filter(m => activeSubIds.has(m.id || m.materia_id));
+    const combined = [];
+    if (genericSub) combined.push(genericSub);
+    activeSubs.forEach(m => {
+      const mId = m.id || m.materia_id;
+      const genId = genericSub ? (genericSub.id || genericSub.materia_id) : null;
+      if (mId !== genId) {
+        combined.push(m);
+      }
+    });
+    return combined;
+  };
+
+  const getFilteredGruposOptions = () => {
+    if (!assignmentOptions.grupos) return [];
+    if (!isIntersemestral) return assignmentOptions.grupos;
+    const genericGrp = assignmentOptions.grupos.find(g => g.clave === 'Intersemestral');
+    const activeGrpIds = new Set(interClasses.map(c => c.grupo_id));
+    const activeGrps = assignmentOptions.grupos.filter(g => activeGrpIds.has(g.id || g.grupo_id));
+    const combined = [];
+    if (genericGrp) combined.push(genericGrp);
+    activeGrps.forEach(g => {
+      const gId = g.id || g.grupo_id;
+      const genId = genericGrp ? (genericGrp.id || genericGrp.grupo_id) : null;
+      if (gId !== genId) {
+        combined.push(g);
+      }
+    });
+    return combined;
+  };
+
   const handleAssignClassClick = async () => {
     setLoadingAssignmentOptions(true);
     setSelectedSubjectId('');
@@ -1651,6 +2047,14 @@ export default function AdminDashboard({ user }) {
     try {
       const options = await api.getAssignmentOptions();
       setAssignmentOptions(options);
+      
+      if (isIntersemestral && options) {
+        const interSub = options.materias?.find(m => m.nombre === 'Intersemestral');
+        if (interSub) setSelectedSubjectId(interSub.id || interSub.materia_id || '');
+        const interGrp = options.grupos?.find(g => g.clave === 'Intersemestral');
+        if (interGrp) setSelectedGroupIdForClass(interGrp.id || interGrp.grupo_id || '');
+      }
+      
       setShowAssignClassModal(true);
     } catch (err) {
       console.error("Error loading assignment options:", err);
@@ -1680,14 +2084,20 @@ export default function AdminDashboard({ user }) {
 
   const handleSendStudentInvitation = async (e) => {
     e.preventDefault();
-    if (!inviteStudentEmail || !selectedGroupIdForInvite) {
+    let email = inviteStudentEmail.trim();
+    if (!email || !selectedGroupIdForInvite) {
       setInviteError('Todos los campos son obligatorios.');
       return;
     }
 
+    if (email.includes('@')) {
+      email = email.split('@')[0];
+    }
+    email = `${email}@cuautitlan.tecnm.mx`;
+
     const institutionalPattern = /^[0-9]+@cuautitlan\.tecnm\.mx$/;
-    if (!institutionalPattern.test(inviteStudentEmail)) {
-      setInviteError('El correo debe ser institucional con formato de número de control (ej: 223107422@cuautitlan.tecnm.mx).');
+    if (!institutionalPattern.test(email)) {
+      setInviteError('Introduce un número de control válido (ej: 223107422).');
       return;
     }
 
@@ -1696,10 +2106,9 @@ export default function AdminDashboard({ user }) {
     setInviteSuccess(false);
 
     try {
-      await api.inviteStudent(inviteStudentEmail, selectedGroupIdForInvite);
+      await api.inviteStudent(email, selectedGroupIdForInvite);
       setInviteSuccess(true);
       setInviteStudentEmail('');
-      setSelectedGroupIdForInvite('');
       loadAlumnosOverviewData();
       setTimeout(() => {
         setInviteSuccess(false);
@@ -1826,25 +2235,31 @@ export default function AdminDashboard({ user }) {
 
   const handleSaveAssignment = async (e) => {
     e.preventDefault();
-    if (!adminSelectedTeacherId || !selectedSubjectId || !selectedGroupIdForClass) return;
+    const docenteId = adminSelectedTeacherId || selectedDocenteIdForGroup;
+    if (!docenteId || !selectedSubjectId || !selectedGroupIdForClass) return;
     setSavingAssignment(true);
     try {
       await api.createAssignment({
-        docenteId: adminSelectedTeacherId,
+        docenteId: Number(docenteId),
         materiaId: Number(selectedSubjectId),
         grupoId: Number(selectedGroupIdForClass),
-        horario: assignedClassSchedule
+        horario: null
       });
       setShowAssignClassModal(false);
       
       setReminderToast({ show: true, teacherName: `Clase asignada con éxito` });
       setTimeout(() => setReminderToast({ show: false, teacherName: '' }), 4000);
       
-      const updatedOverview = await api.getTeacherOverview(adminSelectedTeacherId, selectedWeek);
-      setAdminTeacherDetail(prev => ({
-        ...prev,
-        data: updatedOverview
-      }));
+      if (adminSelectedTeacherId) {
+        const updatedOverview = await api.getTeacherOverview(adminSelectedTeacherId, selectedWeek);
+        setAdminTeacherDetail(prev => ({
+          ...prev,
+          data: updatedOverview
+        }));
+      } else {
+        await loadIntersemestralData();
+        await refreshDashboardData();
+      }
       
       const updatedAdminSummary = await api.getAdminSummary({ search: adminSearch, shift: adminShift, week: selectedWeek });
       setAdminData(updatedAdminSummary);
@@ -2066,6 +2481,39 @@ export default function AdminDashboard({ user }) {
       console.error("Error creating teacher:", err);
     } finally {
       setSavingNewTeacher(false);
+    }
+  };
+
+  const handleCreateTempGroup = async (e) => {
+    e.preventDefault();
+    if (!tempGroupClave || !tempGroupClave.trim()) {
+      setTempGroupError('La clave del grupo es obligatoria.');
+      return;
+    }
+
+    setSavingTempGroup(true);
+    setTempGroupError('');
+    try {
+      await api.createGroup({
+        clave: tempGroupClave.trim(),
+        turno: tempGroupTurno,
+        cupo: tempGroupCupo,
+        semestre: tempGroupSemestre
+      });
+      
+      const options = await api.getAssignmentOptions();
+      setAssignmentOptions(options);
+      
+      alert(`Grupo temporal "${tempGroupClave}" creado con éxito.`);
+      setShowCreateTempGroupModal(false);
+      setTempGroupClave('');
+      setTempGroupTurno('Matutino');
+      setTempGroupCupo(30);
+      setTempGroupSemestre(1);
+    } catch (err) {
+      setTempGroupError(err.message || 'Error al crear el grupo temporal.');
+    } finally {
+      setSavingTempGroup(false);
     }
   };
 
@@ -2484,8 +2932,8 @@ export default function AdminDashboard({ user }) {
           <tr>
             <td><code>${s.id}</code></td>
             <td colspan="2">${s.name}</td>
-            <td colspan="2">${s.courseName} (${s.courseKey})</td>
-            <td class="val-danger" style="text-align: right;">${s.attendanceRate}%</td>
+            <td colspan="2">${isIntersemestral ? 'Intersemestral' : `${s.course || s.courseName || ''} (${s.groupKey || s.courseKey || ''})`}</td>
+            <td class="val-danger" style="text-align: right;">${s.attendanceRate || s.rate || 0}%</td>
           </tr>
         `;
       });
@@ -2522,8 +2970,18 @@ export default function AdminDashboard({ user }) {
     const loadInitialData = async () => {
       setLoading(true);
       try {
-        const data = await api.getAdminSummary({ search: adminSearch, shift: adminShift, week: selectedWeek });
+        const [data, periodos, activePeriod] = await Promise.all([
+          api.getAdminSummary({ search: adminSearch, shift: adminShift, week: selectedWeek }),
+          api.getPeriodos().catch(() => []),
+          api.getActivePeriod().catch(() => null)
+        ]);
         setAdminData(data);
+        setPeriodosList(periodos);
+        if (activePeriod) {
+          setSelectedImportPeriodoId(activePeriod.periodo_id.toString());
+        } else if (periodos.length > 0) {
+          setSelectedImportPeriodoId(periodos[0].periodo_id.toString());
+        }
         if (data.docentes && data.docentes.length > 0) {
           setAdminSelectedTeacherId(data.docentes[0].docente_id);
         }
@@ -2724,7 +3182,7 @@ export default function AdminDashboard({ user }) {
             >
               <Layers className="w-4 h-4 shrink-0" />
               <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
-                Resumen
+                {isIntersemestral ? 'Control Intersemestral' : 'Resumen'}
               </span>
             </button>
             <button 
@@ -2743,38 +3201,42 @@ export default function AdminDashboard({ user }) {
                 Docentes
               </span>
             </button>
-            <button 
-              onClick={() => {
-                setActiveTab('alumnos');
-                setIsMobileMenuOpen(false);
-              }}
-              className={`w-full text-left py-2.5 px-3 rounded-xl flex items-center font-semibold text-sm cursor-pointer transition-all ${
-                activeTab === 'alumnos'
-                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
-                  : 'hover:bg-bg-base/40 text-txt-muted hover:text-brand-primary border border-transparent'
-              } ${isSidebarCollapsed ? 'justify-center' : 'justify-start'}`}
-            >
-              <UserCheck className="w-4 h-4 shrink-0" />
-              <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
-                Alumnos
-              </span>
-            </button>
-            <button 
-              onClick={() => {
-                setActiveTab('desersion');
-                setIsMobileMenuOpen(false);
-              }}
-              className={`w-full text-left py-2.5 px-3 rounded-xl flex items-center font-semibold text-sm cursor-pointer transition-all ${
-                activeTab === 'desersion'
-                  ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
-                  : 'hover:bg-bg-base/40 text-txt-muted hover:text-brand-primary border border-transparent'
-              } ${isSidebarCollapsed ? 'justify-center' : 'justify-start'}`}
-            >
-              <ShieldAlert className="w-4 h-4 shrink-0" />
-              <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
-                Deserción
-              </span>
-            </button>
+            {!isIntersemestral && (
+              <button 
+                onClick={() => {
+                  setActiveTab('alumnos');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full text-left py-2.5 px-3 rounded-xl flex items-center font-semibold text-sm cursor-pointer transition-all ${
+                  activeTab === 'alumnos'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
+                    : 'hover:bg-bg-base/40 text-txt-muted hover:text-brand-primary border border-transparent'
+                } ${isSidebarCollapsed ? 'justify-center' : 'justify-start'}`}
+              >
+                <UserCheck className="w-4 h-4 shrink-0" />
+                <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
+                  Alumnos
+                </span>
+              </button>
+            )}
+            {!isIntersemestral && (
+              <button 
+                onClick={() => {
+                  setActiveTab('desersion');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full text-left py-2.5 px-3 rounded-xl flex items-center font-semibold text-sm cursor-pointer transition-all ${
+                  activeTab === 'desersion'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
+                    : 'hover:bg-bg-base/40 text-txt-muted hover:text-brand-primary border border-transparent'
+                } ${isSidebarCollapsed ? 'justify-center' : 'justify-start'}`}
+              >
+                <ShieldAlert className="w-4 h-4 shrink-0" />
+                <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
+                  Deserción
+                </span>
+              </button>
+            )}
             <button 
               onClick={() => {
                 setActiveTab('justificantes');
@@ -2821,9 +3283,39 @@ export default function AdminDashboard({ user }) {
             <div className="hidden md:block">
               <ThemeToggle />
             </div>
-            <div className="flex items-center gap-2.5 bg-bg-surface border border-bdr-base px-4 py-2 rounded-xl text-sm font-semibold text-txt-muted theme-transition">
-              <Layers className="w-4 h-4 text-brand-primary" />
-              <span>Ciclo: {getSchoolCycle()}</span>
+            <div className="relative">
+              <button 
+                onClick={() => setIsCycleDropdownOpen(!isCycleDropdownOpen)}
+                className="flex items-center gap-2.5 bg-bg-surface border border-bdr-base px-4 py-2 rounded-xl text-sm font-semibold text-txt-muted hover:text-brand-primary hover:border-brand-primary/30 theme-transition cursor-pointer"
+              >
+                <Layers className="w-4 h-4 text-brand-primary" />
+                <span>Ciclo: {getSchoolCycle()}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-txt-muted" />
+              </button>
+              
+              {isCycleDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsCycleDropdownOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-48 bg-bg-card border border-bdr-base rounded-xl shadow-xl z-20 py-1.5 max-h-60 overflow-y-auto theme-transition text-left">
+                    {schoolCyclesList.map((cycle) => (
+                      <button
+                        key={cycle}
+                        onClick={() => {
+                          handleCycleChange(cycle);
+                          setIsCycleDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors ${
+                          getSchoolCycle() === cycle 
+                            ? 'text-brand-primary bg-brand-primary/10' 
+                            : 'text-txt-subtle hover:text-txt-base hover:bg-bg-surface'
+                        }`}
+                      >
+                        {cycle}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2.5 bg-bg-surface border border-bdr-base px-4 py-2 rounded-xl text-sm font-semibold text-txt-muted theme-transition">
               <Calendar className="w-4 h-4 text-brand-primary" />
@@ -2863,8 +3355,378 @@ export default function AdminDashboard({ user }) {
         {/* RENDER VIEWS */}
         <div className="space-y-8 animate-fadeIn">
           {activeTab === 'resumen' && (
-            <>
-              {/* KPIs */}
+            isIntersemestral ? (
+              <div className="space-y-6 text-left">
+                {/* KPIs Intersemestral */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="bg-bg-card border border-bdr-base p-5 rounded-2xl shadow-sm theme-transition">
+                    <span className="text-xs font-bold text-txt-subtle uppercase tracking-wider block mb-2">Materias Ofertadas</span>
+                    <div className="text-3xl font-extrabold text-txt-base">{interClasses.length}</div>
+                    <div className="text-[10px] text-txt-muted font-semibold mt-1">Materias de recursamiento en este ciclo</div>
+                  </div>
+                  <div className="bg-bg-card border border-bdr-base p-5 rounded-2xl shadow-sm theme-transition">
+                    <span className="text-xs font-bold text-txt-subtle uppercase tracking-wider block mb-2">Total Alumnos Inscritos</span>
+                    <div className="text-3xl font-extrabold text-txt-base">
+                      {interClasses.reduce((acc, c) => acc + c.alumnos_inscritos, 0)}
+                    </div>
+                    <div className="text-[10px] text-txt-muted font-semibold mt-1">Alumnos recursando materias actualmente</div>
+                  </div>
+                  <div className="bg-bg-card border border-bdr-base p-5 rounded-2xl shadow-sm theme-transition">
+                    <span className="text-xs font-bold text-txt-subtle uppercase tracking-wider block mb-2">Ocupación Promedio</span>
+                    <div className="text-3xl font-extrabold text-txt-base">
+                      {(() => {
+                        const totalCupos = interClasses.reduce((acc, c) => acc + c.grupo_cupo, 0);
+                        const totalInscritos = interClasses.reduce((acc, c) => acc + c.alumnos_inscritos, 0);
+                        return totalCupos > 0 ? `${Math.round((totalInscritos / totalCupos) * 100)}%` : '0%';
+                      })()}
+                    </div>
+                    <div className="text-[10px] text-txt-muted font-semibold mt-1">Eficiencia de cupos ocupados</div>
+                  </div>
+                </div>
+
+                {/* Workspace grid layout */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
+                  
+                  {/* Left Column: Clases Ofertadas */}
+                  <div className="lg:col-span-2 space-y-4">
+                    <div className="flex justify-between items-center px-1">
+                      <h4 className="font-extrabold text-base">Materias Ofertadas</h4>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTempGroupClave('');
+                            setTempGroupTurno('Matutino');
+                            setTempGroupCupo(30);
+                            setTempGroupSemestre(1);
+                            setTempGroupError('');
+                            setShowCreateTempGroupModal(true);
+                          }}
+                          className="text-emerald-500 hover:text-emerald-600 text-[10px] font-bold uppercase bg-emerald-500/10 border border-emerald-500/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors flex items-center gap-1 shrink-0"
+                          title="Crear un grupo temporal para recursamiento"
+                        >
+                          <span>+ Grupo Temporal</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setAdminSelectedTeacherId('');
+                            setAdminTeacherDetail(null);
+                            setSelectedDocenteIdForGroup('');
+                            await handleAssignClassClick();
+                          }}
+                          className="text-brand-primary hover:text-brand-hover text-[10px] font-bold uppercase bg-brand-primary/10 border border-brand-primary/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                          title="Asignar una nueva materia y grupo a un docente"
+                        >
+                          Asignar Clase
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsImportModalOpen(true)}
+                          className="text-brand-primary hover:text-brand-hover text-[10px] font-bold uppercase bg-brand-primary/10 border border-brand-primary/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                          title="Cargar horarios"
+                        >
+                          Cargar Excel
+                        </button>
+                        {interClasses.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={handleClearAllInterClasses}
+                            className="text-rose-500 hover:text-rose-600 text-[10px] font-bold uppercase bg-rose-500/10 border border-rose-500/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                            title="Eliminar todos los horarios cargados"
+                          >
+                            Vaciar Todo
+                          </button>
+                        )}
+                        <span className="text-[10px] font-bold text-txt-muted uppercase bg-bg-surface px-2 py-1 rounded-md border border-bdr-base">
+                          {interClasses.length} clases
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
+                      {interClasses.length === 0 ? (
+                        <div className="bg-bg-card border border-bdr-base rounded-2xl p-8 text-center text-txt-muted font-semibold flex flex-col items-center justify-center gap-3">
+                          <span>No hay materias registradas para este periodo intersemestral.</span>
+                          <button
+                            type="button"
+                            onClick={() => setIsImportModalOpen(true)}
+                            className="bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold py-2 px-4 rounded-xl cursor-pointer shadow-sm transition-all"
+                          >
+                            Cargar Horarios desde Excel
+                          </button>
+                        </div>
+                      ) : (
+                        interClasses.map((item) => {
+                          const isSelected = selectedInterClassId === item.id;
+                          const isEditing = editingCupoId === item.id;
+                          const percent = (item.grupo_cupo && item.grupo_cupo > 0) ? Math.round((item.alumnos_inscritos / item.grupo_cupo) * 100) : 0;
+                          let progressColor = "bg-emerald-500";
+                          if (percent >= 90) progressColor = "bg-rose-500";
+                          else if (percent >= 75) progressColor = "bg-amber-500";
+
+                          return (
+                            <div
+                              key={item.id}
+                              onClick={() => {
+                                if (!isEditing) {
+                                  setSelectedInterClassId(item.id);
+                                }
+                              }}
+                              className={`p-4 rounded-2xl border transition-all duration-200 text-left relative overflow-hidden group cursor-pointer ${
+                                isSelected 
+                                  ? 'bg-brand-primary/5 border-brand-primary shadow-sm' 
+                                  : 'bg-bg-card border-bdr-base hover:border-brand-primary/45 shadow-sm'
+                              }`}
+                            >
+                              <div className="flex justify-between items-start gap-2 mb-1.5">
+                                <div className="space-y-0.5">
+                                  <h5 className="font-extrabold text-sm text-txt-base line-clamp-1 group-hover:text-brand-primary transition-colors">
+                                    {isIntersemestral ? 'Intersemestral' : item.materia_nombre}
+                                  </h5>
+                                  <p className="text-[10px] font-bold text-txt-muted uppercase">
+                                    {isIntersemestral ? 'Recursamiento' : `Materia: ${item.materia_clave} | Grupo: ${item.grupo_clave}`}
+                                  </p>
+                                </div>
+                                {editingHorarioId === item.id ? (
+                                  <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="text"
+                                      value={editingHorarioValue}
+                                      onChange={(e) => setEditingHorarioValue(e.target.value)}
+                                      className="w-24 bg-bg-surface border border-brand-primary text-txt-base rounded-md px-1.5 py-0.5 outline-none text-[10px] font-semibold"
+                                      placeholder="Lu 08:00-10:00"
+                                      autoFocus
+                                    />
+                                    <button 
+                                      onClick={() => handleSaveHorario(item.id)}
+                                      className="bg-brand-primary hover:bg-brand-hover text-white px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer"
+                                    >
+                                      ✓
+                                    </button>
+                                    <button 
+                                      onClick={() => setEditingHorarioId(null)}
+                                      className="bg-bg-surface border border-bdr-base text-txt-muted px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-primary border border-brand-primary/15 whitespace-nowrap">
+                                      {item.horario}
+                                    </span>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditingHorarioId(item.id);
+                                        setEditingHorarioValue(item.horario || '');
+                                      }}
+                                      className="text-txt-muted hover:text-brand-primary transition-colors cursor-pointer text-xs"
+                                      title="Editar horario"
+                                    >
+                                      ✏️
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+
+                              <p className="text-xs text-txt-subtle font-medium truncate mb-3">
+                                👤 Docente: {item.docente_nombre}
+                              </p>
+
+                              {/* Capacity block */}
+                              <div className="pt-2 border-t border-bdr-base/50 space-y-1.5">
+                                <div className="flex justify-between items-center text-[10px] font-bold">
+                                  <span className="text-txt-muted uppercase tracking-wider">Cupo y Alumnos</span>
+                                  {isEditing ? (
+                                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="number"
+                                        value={editingCupoValue}
+                                        onChange={(e) => setEditingCupoValue(parseInt(e.target.value))}
+                                        className="w-12 bg-bg-surface border border-brand-primary text-txt-base rounded-md px-1 py-0.5 outline-none text-center text-xs"
+                                        min="1"
+                                      />
+                                      <button 
+                                        onClick={() => handleSaveCupo(item.id)}
+                                        className="bg-brand-primary hover:bg-brand-hover text-white px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer"
+                                      >
+                                        ✓
+                                      </button>
+                                      <button 
+                                        onClick={() => setEditingCupoId(null)}
+                                        className="bg-bg-surface border border-bdr-base text-txt-muted px-1.5 py-0.5 rounded text-[9px] font-bold cursor-pointer"
+                                      >
+                                        ✕
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-txt-subtle">
+                                        Inscritos: <strong className="text-txt-base">{item.alumnos_inscritos} / {item.grupo_cupo}</strong>
+                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEditingCupoId(item.id);
+                                          setEditingCupoValue(item.grupo_cupo);
+                                        }}
+                                        className="text-txt-muted hover:text-brand-primary p-0.5 cursor-pointer rounded transition-colors hover:bg-bg-surface"
+                                        title="Editar cupo límite"
+                                      >
+                                        ✏️
+                                      </button>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleDeleteInterClass(item.id, item.materia_nombre);
+                                        }}
+                                        className="text-txt-subtle hover:text-rose-500 p-0.5 cursor-pointer rounded transition-colors hover:bg-rose-500/10 text-xs shrink-0 flex items-center justify-center"
+                                        title="Eliminar materia de intersemestral"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="w-full bg-bg-surface h-1.5 rounded-full overflow-hidden">
+                                  <div 
+                                    className={`h-full ${progressColor} transition-all duration-300`} 
+                                    style={{ width: `${Math.min(percent, 100)}%` }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right Column: Students Enrollment */}
+                  <div className="lg:col-span-3 space-y-4">
+                    {selectedInterClassId ? (
+                      (() => {
+                        const currentClass = interClasses.find(c => c.id === selectedInterClassId);
+                        if (!currentClass) return null;
+
+                        const isFull = currentClass.alumnos_inscritos >= currentClass.grupo_cupo;
+
+                        return (
+                          <>
+                            <div className="flex justify-between items-center px-1">
+                              <h4 className="font-extrabold text-base">Alumnos Inscritos</h4>
+                              <span className="text-[10px] font-bold text-txt-muted uppercase bg-bg-surface px-2 py-1 rounded-md border border-bdr-base">
+                                {isIntersemestral ? 'Intersemestral' : `${currentClass.materia_nombre} (${currentClass.grupo_clave})`}
+                              </span>
+                            </div>
+
+                            <div className="bg-bg-card border border-bdr-base rounded-2xl p-6 shadow-sm space-y-5 text-left theme-transition">
+                              
+                              {/* Quick Enrollment search */}
+                              <div className="space-y-1.5 relative">
+                                <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
+                                  Inscribir Nuevo Alumno
+                                </label>
+                                <div className="flex gap-2">
+                                  <input
+                                    type="text"
+                                    placeholder={isFull ? "La clase está llena. Aumenta el cupo para inscribir." : "Buscar alumno por nombre, matrícula o correo..."}
+                                    value={studentSearchQuery}
+                                    onChange={(e) => setStudentSearchQuery(e.target.value)}
+                                    disabled={isFull}
+                                    className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary disabled:opacity-50 text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
+                                  />
+                                </div>
+
+                                {/* Autocomplete Results */}
+                                {studentSearchResults.length > 0 && (
+                                  <div className="absolute left-0 right-0 mt-1 bg-bg-card border border-bdr-base rounded-xl shadow-xl z-30 py-1.5 max-h-48 overflow-y-auto theme-transition">
+                                    {studentSearchResults.map((alumno) => (
+                                      <button
+                                        key={alumno.id}
+                                        type="button"
+                                        onClick={() => handleEnrollStudent(alumno)}
+                                        className="w-full text-left px-4 py-2 text-xs hover:bg-bg-surface flex justify-between items-center transition-colors cursor-pointer"
+                                      >
+                                        <div className="space-y-0.5">
+                                          <p className="font-bold text-txt-base">{alumno.name}</p>
+                                          <p className="text-[10px] text-txt-muted">Matrícula: {alumno.matricula} | Correo: {alumno.email}</p>
+                                        </div>
+                                        <span className="text-[10px] text-brand-primary font-bold hover:underline">
+                                          Inscribir
+                                        </span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Enrolled Students list */}
+                              <div className="space-y-2">
+                                <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
+                                  Lista de Clase ({interStudents.length} alumnos)
+                                </label>
+
+                                {interStudents.length === 0 ? (
+                                  <div className="border border-dashed border-bdr-base rounded-2xl p-8 text-center text-txt-muted font-medium text-xs">
+                                    No hay alumnos inscritos en este recursamiento todavía.
+                                  </div>
+                                ) : (
+                                  <div className="border border-bdr-base rounded-2xl overflow-hidden bg-bg-surface/10">
+                                    <div className="overflow-x-auto">
+                                      <table className="w-full text-left border-collapse text-xs">
+                                        <thead>
+                                          <tr className="border-b border-bdr-base bg-bg-surface/30">
+                                            <th className="p-3 font-bold text-txt-muted uppercase tracking-wider text-[10px]">Matrícula</th>
+                                            <th className="p-3 font-bold text-txt-muted uppercase tracking-wider text-[10px]">Nombre</th>
+                                            <th className="p-3 font-bold text-txt-muted uppercase tracking-wider text-[10px]">Correo</th>
+                                            <th className="p-3 font-bold text-txt-muted uppercase tracking-wider text-[10px] text-center">Acciones</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-bdr-base/40">
+                                          {interStudents.map((student) => (
+                                            <tr key={student.id} className="hover:bg-bg-surface/20 transition-colors">
+                                              <td className="p-3 font-semibold text-txt-base"><code>{student.matricula}</code></td>
+                                              <td className="p-3 font-bold text-txt-base">{student.nombre}</td>
+                                              <td className="p-3 font-medium text-txt-subtle">{student.correo}</td>
+                                              <td className="p-3 text-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleDeregisterStudent(student.id)}
+                                                  className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10 p-1.5 rounded-lg cursor-pointer transition-colors"
+                                                  title="Desvincular alumno"
+                                                >
+                                                  <Trash2 className="w-4 h-4" />
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+
+                            </div>
+                          </>
+                        );
+                      })()
+                    ) : (
+                      <div className="bg-bg-card border border-bdr-base rounded-2xl p-12 text-center text-txt-muted font-semibold flex flex-col items-center justify-center gap-3">
+                        <Layers className="w-10 h-10 text-txt-subtle" />
+                        <span>Selecciona una materia ofertada de la izquierda para ver su lista de estudiantes e inscribir alumnos.</span>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* KPIs */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
                 <div className="bg-bg-card border border-bdr-base p-5 rounded-2xl shadow-sm theme-transition">
                   <div className="flex justify-between items-start mb-3">
@@ -3266,7 +4128,7 @@ export default function AdminDashboard({ user }) {
                 </div>
               </div>
             </>
-          )}
+          ) )}
 
           {activeTab === 'docentes' && (
             <>
@@ -3282,28 +4144,45 @@ export default function AdminDashboard({ user }) {
                     className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
                   />
                 </div>
-                <div className="space-y-1 w-full sm:w-auto shrink-0 flex flex-col justify-end">
-                  <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block mb-1">Filtrar por Turno</label>
-                  <div className="flex bg-bg-surface border border-bdr-base rounded-xl p-1 theme-transition w-full sm:w-auto self-start">
-                    {[
-                      { id: 'all', label: 'Todos' },
-                      { id: 'Matutino', label: 'Matutino' },
-                      { id: 'Vespertino', label: 'Vespertino' }
-                    ].map((shift) => (
-                      <button
-                        key={shift.id}
-                        type="button"
-                        onClick={() => setAdminShift(shift.id)}
-                        className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer select-none ${
-                          adminShift === shift.id
-                            ? 'bg-brand-primary text-white shadow-sm'
-                            : 'text-txt-muted hover:text-brand-primary'
-                        }`}
-                      >
-                        {shift.label}
-                      </button>
-                    ))}
+                <div className="flex flex-wrap items-center gap-4 w-full sm:w-auto shrink-0">
+                  <div className="space-y-1 flex flex-col justify-end">
+                    <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block mb-1">Filtrar por Turno</label>
+                    <div className="flex bg-bg-surface border border-bdr-base rounded-xl p-1 theme-transition w-full sm:w-auto self-start">
+                      {[
+                        { id: 'all', label: 'Todos' },
+                        { id: 'Matutino', label: 'Matutino' },
+                        { id: 'Vespertino', label: 'Vespertino' }
+                      ].map((shift) => (
+                        <button
+                          key={shift.id}
+                          type="button"
+                          onClick={() => setAdminShift(shift.id)}
+                          className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer select-none ${
+                            adminShift === shift.id
+                              ? 'bg-brand-primary text-white shadow-sm'
+                              : 'text-txt-muted hover:text-brand-primary'
+                          }`}
+                        >
+                          {shift.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+
+                  {isIntersemestral && (
+                    <div 
+                      className="flex items-center gap-2 select-none cursor-pointer self-end pb-2 h-10" 
+                      onClick={() => setShowAllTeachersInInter(!showAllTeachersInInter)}
+                    >
+                      <input 
+                        type="checkbox" 
+                        checked={showAllTeachersInInter} 
+                        onChange={() => {}} // Handled by parent div
+                        className="rounded border-bdr-base text-brand-primary focus:ring-brand-primary w-4 h-4 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-txt-muted hover:text-txt-base transition-colors">Ver plantilla completa</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -3312,19 +4191,28 @@ export default function AdminDashboard({ user }) {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                   <div>
                     <h3 className="font-extrabold text-xl">Docentes Registrados</h3>
-                    <span className="text-xs font-semibold text-txt-muted">{adminData.docentes?.length || 0} profesores en carrera</span>
+                    <span className="text-xs font-semibold text-txt-muted">{displayedDocentes.length || 0} profesores en carrera</span>
                   </div>
-                  <button 
-                    onClick={handleCreateTeacherClick} 
-                    className="bg-brand-primary hover:bg-brand-hover text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-md hover:scale-[1.02] transition-all cursor-pointer theme-transition"
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>Registrar Docente</span>
-                  </button>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button 
+                      onClick={() => setIsImportModalOpen(true)}
+                      className="bg-bg-surface border border-bdr-base hover:border-brand-primary/30 text-txt-base hover:text-brand-primary font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-sm hover:scale-[1.02] transition-all cursor-pointer theme-transition"
+                    >
+                      <FileSpreadsheet className="w-4 h-4 text-brand-primary" />
+                      <span>Cargar Horarios</span>
+                    </button>
+                    <button 
+                      onClick={handleCreateTeacherClick} 
+                      className="bg-brand-primary hover:bg-brand-hover text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-md hover:scale-[1.02] transition-all cursor-pointer theme-transition"
+                    >
+                      <Users className="w-4 h-4" />
+                      <span>Registrar Docente</span>
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {adminData.docentes?.map((docente) => {
+                  {displayedDocentes.map((docente) => {
                     const isSelected = adminSelectedTeacherId === docente.docente_id;
                     return (
                       <div 
@@ -3366,7 +4254,7 @@ export default function AdminDashboard({ user }) {
                       </div>
                     );
                   })}
-                  {(!adminData.docentes || adminData.docentes.length === 0) && (
+                  {(!displayedDocentes || displayedDocentes.length === 0) && (
                     <p className="text-txt-subtle text-sm col-span-full">No se encontraron docentes con los criterios ingresados.</p>
                   )}
                 </div>
@@ -3550,10 +4438,14 @@ export default function AdminDashboard({ user }) {
                                 <div key={grupo.id} className="p-4 rounded-xl border border-bdr-base bg-bg-surface flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 theme-transition">
                                   <div className="space-y-1 flex-1">
                                     <div className="flex items-center gap-2">
-                                      <span className="font-bold text-sm text-txt-base">{grupo.name}</span>
-                                      <span className="text-[10px] font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.2 rounded border border-brand-primary/20">
-                                        {grupo.key}
+                                      <span className="font-bold text-sm text-txt-base">
+                                        {isIntersemestral ? 'Intersemestral' : grupo.name}
                                       </span>
+                                      {!isIntersemestral && (
+                                        <span className="text-[10px] font-bold bg-brand-primary/10 text-brand-primary px-1.5 py-0.2 rounded border border-brand-primary/20">
+                                          {grupo.key}
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="flex flex-wrap gap-x-4 text-xs text-txt-muted">
                                       <span className="flex items-center gap-1">
@@ -3744,8 +4636,8 @@ export default function AdminDashboard({ user }) {
                                         >
                                           <div className="flex flex-col gap-1 select-none">
                                             <div className="flex items-start justify-between gap-1">
-                                              <span className="text-[11px] font-extrabold leading-tight block break-words line-clamp-3 text-left text-txt-base group-hover:text-brand-primary transition-colors" title={cls.name}>
-                                                {cls.name}
+                                              <span className="text-[11px] font-extrabold leading-tight block break-words line-clamp-3 text-left text-txt-base group-hover:text-brand-primary transition-colors" title={isIntersemestral ? 'Intersemestral' : cls.name}>
+                                                {isIntersemestral ? 'Intersemestral' : cls.name}
                                               </span>
                                               
                                               {isEditingSchedule && (
@@ -3761,7 +4653,9 @@ export default function AdminDashboard({ user }) {
                                           </div>
 
                                           <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-1 text-[9px] select-none shrink-0 border-t border-brand-primary/10 pt-1.5 mt-1.5">
-                                            <span className="font-bold bg-brand-primary/15 text-brand-primary px-1.5 py-0.5 rounded border border-brand-primary/25 shrink-0 w-max">{cls.key}</span>
+                                            {!isIntersemestral && (
+                                              <span className="font-bold bg-brand-primary/15 text-brand-primary px-1.5 py-0.5 rounded border border-brand-primary/25 shrink-0 w-max">{cls.key}</span>
+                                            )}
                                             <span className="text-txt-muted font-bold whitespace-nowrap">
                                               {cls.startHour}:00 - {cls.startHour + duration}:00
                                             </span>
@@ -3989,16 +4883,21 @@ export default function AdminDashboard({ user }) {
                     <form onSubmit={handleSendStudentInvitation} className="space-y-4">
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                          Correo Institucional
+                          Número de Control / Correo
                         </label>
-                        <input
-                          type="email"
-                          required
-                          value={inviteStudentEmail}
-                          onChange={(e) => setInviteStudentEmail(e.target.value)}
-                          placeholder="ej: 223107422@cuautitlan.tecnm.mx"
-                          className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
-                        />
+                        <div className="flex items-center bg-bg-surface border border-bdr-base focus-within:border-brand-primary rounded-xl overflow-hidden theme-transition">
+                          <input
+                            type="text"
+                            required
+                            value={inviteStudentEmail}
+                            onChange={(e) => setInviteStudentEmail(e.target.value)}
+                            placeholder="ej: 223107422"
+                            className="flex-1 bg-transparent text-txt-base px-4 py-2.5 outline-none text-sm"
+                          />
+                          <span className="bg-bg-card border-l border-bdr-base text-txt-muted px-4 py-2.5 text-xs select-none font-bold font-mono theme-transition">
+                            @cuautitlan.tecnm.mx
+                          </span>
+                        </div>
                       </div>
 
                       <div className="space-y-1">
@@ -4824,6 +5723,152 @@ export default function AdminDashboard({ user }) {
         </div>
       </main>
 
+      {/* EXCEL IMPORT MODAL */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full shadow-2xl p-6 relative theme-transition animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center border-b border-bdr-base pb-3 mb-4">
+              <h4 className="font-extrabold text-base text-txt-base flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-brand-primary" />
+                Cargar Distribución de Horarios
+              </h4>
+              <button 
+                onClick={() => {
+                  setIsImportModalOpen(false);
+                  setImportFile(null);
+                  setImportError('');
+                  setImportSuccess(false);
+                  setImportStats(null);
+                }} 
+                className="text-txt-muted hover:text-txt-base cursor-pointer text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleImportHorarios} className="space-y-4 text-left">
+              {/* Target Cycle Selection */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
+                  1. Ciclo Escolar Destino
+                </label>
+                <select
+                  value={selectedImportPeriodoId}
+                  onChange={(e) => setSelectedImportPeriodoId(e.target.value)}
+                  className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-3 py-2.5 outline-none text-xs theme-transition cursor-pointer"
+                  required
+                >
+                  <option value="" disabled>Seleccionar ciclo...</option>
+                  {periodosList.map((p) => (
+                    <option key={p.periodo_id} value={p.periodo_id}>
+                      {p.clave} - {p.nombre} {p.activo ? '(Ciclo Activo)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Drag & Drop File Input */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
+                  2. Archivo Excel (.xlsx)
+                </label>
+                <div className="border-2 border-dashed border-bdr-base hover:border-brand-primary/50 rounded-2xl p-6 transition-all text-center flex flex-col items-center justify-center gap-3 bg-bg-surface/30 group">
+                  <UploadCloud className="w-10 h-10 text-txt-subtle group-hover:text-brand-primary transition-colors" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-txt-base">
+                      {importFile ? importFile.name : 'Selecciona tu distribución horaria'}
+                    </p>
+                    <p className="text-[10px] text-txt-muted font-medium">
+                      {importFile ? `${(importFile.size / 1024).toFixed(1)} KB` : 'Formato compatible: Excel (.xlsx)'}
+                    </p>
+                  </div>
+                  <input
+                    id="excel-file-input-modal"
+                    type="file"
+                    accept=".xlsx"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        setImportFile(file);
+                        setImportError('');
+                        setImportSuccess(false);
+                        setImportStats(null);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('excel-file-input-modal').click()}
+                    className="bg-bg-card hover:bg-bg-base border border-bdr-base text-txt-base text-xs font-bold py-1.5 px-3 rounded-xl transition-all cursor-pointer shadow-sm mt-1"
+                  >
+                    Examinar Archivo
+                  </button>
+                </div>
+              </div>
+
+              {/* Notifications */}
+              {importError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-xs rounded-xl flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{importError}</span>
+                </div>
+              )}
+
+              {importSuccess && importStats && (
+                <div className="p-4 bg-green-500/10 border border-green-500/20 text-green-600 rounded-xl space-y-2">
+                  <div className="flex items-center gap-2 text-xs font-bold text-green-700">
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>¡Horarios sincronizados con éxito!</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-green-700/80 pt-1.5 border-t border-green-500/10">
+                    <div>Filas procesadas: <span className="text-txt-base">{importStats.processedCount}</span></div>
+                    <div>Docentes creados: <span className="text-txt-base">{importStats.createdDocentesCount}</span></div>
+                    <div>Materias creadas: <span className="text-txt-base">{importStats.createdMateriasCount}</span></div>
+                    <div>Grupos creados: <span className="text-txt-base">{importStats.createdGruposCount}</span></div>
+                    <div className="col-span-2 font-extrabold">Horarios vinculados: <span className="text-txt-base">{importStats.createdAsignacionesCount}</span></div>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsImportModalOpen(false);
+                    setImportFile(null);
+                    setImportError('');
+                    setImportSuccess(false);
+                    setImportStats(null);
+                  }}
+                  disabled={importingExcel}
+                  className="bg-bg-surface border border-bdr-base text-txt-base hover:bg-bg-base text-xs font-bold py-2 px-4 rounded-xl cursor-pointer transition-all"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={importingExcel || !importFile || !selectedImportPeriodoId}
+                  className="bg-brand-primary hover:bg-brand-hover text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer shadow-md select-none"
+                >
+                  {importingExcel ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Sincronizando...</span>
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Sincronizar Excel</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* EDIT STUDENT MODAL */}
       {showEditStudentModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
@@ -5016,12 +6061,28 @@ export default function AdminDashboard({ user }) {
             <form onSubmit={handleSaveAssignment} className="space-y-4 text-left">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">Docente</label>
-                <input 
-                  type="text" 
-                  value={adminTeacherDetail?.name || ''} 
-                  disabled
-                  className="w-full bg-bg-surface/50 border border-bdr-base text-txt-muted rounded-xl px-4 py-2.5 outline-none text-sm theme-transition cursor-not-allowed"
-                />
+                {adminTeacherDetail?.name ? (
+                  <input 
+                    type="text" 
+                    value={adminTeacherDetail.name} 
+                    disabled
+                    className="w-full bg-bg-surface/50 border border-bdr-base text-txt-muted rounded-xl px-4 py-2.5 outline-none text-sm theme-transition cursor-not-allowed"
+                  />
+                ) : (
+                  <select
+                    value={selectedDocenteIdForGroup}
+                    onChange={(e) => setSelectedDocenteIdForGroup(e.target.value)}
+                    required
+                    className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm cursor-pointer theme-transition"
+                  >
+                    <option value="">Selecciona un Docente</option>
+                    {assignmentOptions.docentes?.map(d => (
+                      <option key={d.id || d.docente_id} value={d.id || d.docente_id}>
+                        {d.nombre || d.docente || d.nombre_completo}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">Materia</label>
@@ -5031,9 +6092,10 @@ export default function AdminDashboard({ user }) {
                   required
                   className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm cursor-pointer theme-transition"
                 >
-                  <option value="">Selecciona una Materia</option>
                   {assignmentOptions.materias?.map(m => (
-                    <option key={m.id} value={m.id}>{m.nombre} ({m.clave})</option>
+                    <option key={m.id || m.materia_id} value={m.id || m.materia_id}>
+                      {m.nombre}{isIntersemestral ? ' (Intersemestral)' : ''} ({m.clave})
+                    </option>
                   ))}
                 </select>
               </div>
@@ -5047,20 +6109,11 @@ export default function AdminDashboard({ user }) {
                 >
                   <option value="">Selecciona un Grupo</option>
                   {assignmentOptions.grupos?.map(g => (
-                    <option key={g.id} value={g.id}>{g.clave} - Turno {g.turno || 'N/A'}</option>
+                    <option key={g.id || g.grupo_id} value={g.id || g.grupo_id}>
+                      {g.clave}{isIntersemestral ? ' (Intersemestral)' : ''} - Turno {g.turno || 'N/A'}
+                    </option>
                   ))}
                 </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">Horario</label>
-                <input 
-                  type="text" 
-                  value={assignedClassSchedule} 
-                  onChange={(e) => setAssignedClassSchedule(e.target.value)} 
-                  required
-                  placeholder="Ej. Lu-Mi 08:00 o Lunes y Miércoles 08:00 - 10:00"
-                  className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
-                />
               </div>
 
               {adminTeacherDetail?.data?.grupos && adminTeacherDetail.data.grupos.length > 0 && (
@@ -5114,7 +6167,9 @@ export default function AdminDashboard({ user }) {
                 >
                   <option value="">Selecciona una Materia</option>
                   {assignmentOptions.materias?.map(m => (
-                    <option key={m.id || m.materia_id} value={m.id || m.materia_id}>{m.nombre} ({m.clave})</option>
+                    <option key={m.id || m.materia_id} value={m.id || m.materia_id}>
+                      {m.nombre}{isIntersemestral ? ' (Intersemestral)' : ''} ({m.clave})
+                    </option>
                   ))}
                 </select>
               </div>
@@ -5128,7 +6183,9 @@ export default function AdminDashboard({ user }) {
                 >
                   <option value="">Selecciona un Grupo</option>
                   {assignmentOptions.grupos?.map(g => (
-                    <option key={g.id || g.grupo_id} value={g.id || g.grupo_id}>{g.clave} - Turno {g.turno || 'N/A'}</option>
+                    <option key={g.id || g.grupo_id} value={g.id || g.grupo_id}>
+                      {g.clave}{isIntersemestral ? ' (Intersemestral)' : ''} - Turno {g.turno || 'N/A'}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -5158,6 +6215,86 @@ export default function AdminDashboard({ user }) {
                 <button type="submit" disabled={savingQuickAssignment} className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold">
                   {savingQuickAssignment ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Asignar</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE TEMPORARY GROUP MODAL */}
+      {showCreateTempGroupModal && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
+          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+            <div className="flex justify-between items-center border-b border-bdr-base pb-3">
+              <h3 className="font-extrabold text-lg text-txt-base">Crear Grupo Temporal</h3>
+              <button onClick={() => setShowCreateTempGroupModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
+            </div>
+            <form onSubmit={handleCreateTempGroup} className="space-y-4 text-left">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">Clave del Grupo Temporal</label>
+                <input 
+                  type="text" 
+                  value={tempGroupClave}
+                  onChange={(e) => setTempGroupClave(e.target.value)}
+                  placeholder="Ej. Redes Inter, Inter-A, etc."
+                  required
+                  className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">Turno</label>
+                  <select 
+                    value={tempGroupTurno} 
+                    onChange={(e) => setTempGroupTurno(e.target.value)}
+                    required
+                    className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm cursor-pointer theme-transition"
+                  >
+                    <option value="Matutino">Matutino</option>
+                    <option value="Vespertino">Vespertino</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">Semestre</label>
+                  <select 
+                    value={tempGroupSemestre} 
+                    onChange={(e) => setTempGroupSemestre(parseInt(e.target.value))}
+                    required
+                    className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm cursor-pointer theme-transition"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map(sem => (
+                      <option key={sem} value={sem}>{sem}° Semestre</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">Cupo Máximo</label>
+                <input 
+                  type="number" 
+                  value={tempGroupCupo}
+                  onChange={(e) => setTempGroupCupo(parseInt(e.target.value))}
+                  min="1"
+                  required
+                  className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
+                />
+              </div>
+
+              {tempGroupError && (
+                <div className="text-xs text-rose-500 font-semibold bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-xl">
+                  {tempGroupError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
+                <button type="button" onClick={() => setShowCreateTempGroupModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                <button type="submit" disabled={savingTempGroup} className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold">
+                  {savingTempGroup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
+                  <span>Crear Grupo</span>
                 </button>
               </div>
             </form>
@@ -5287,7 +6424,9 @@ export default function AdminDashboard({ user }) {
                     <tr key={s.id} className="hover:bg-bg-surface/30 theme-transition">
                       <td className="py-3 px-3 font-mono font-semibold text-txt-subtle">{s.id}</td>
                       <td className="py-3 px-3 font-bold text-txt-base">{s.name}</td>
-                      <td className="py-3 px-3 text-txt-muted">{s.courseName} ({s.courseKey})</td>
+                      <td className="py-3 px-3 text-txt-muted">
+                        {isIntersemestral ? 'Intersemestral' : `${s.course || s.courseName || ''} (${s.groupKey || s.courseKey || ''})`}
+                      </td>
                       <td className="py-3 px-3 text-right font-extrabold text-rose-500 bg-rose-500/5">{s.attendanceRate}%</td>
                     </tr>
                   ))}
