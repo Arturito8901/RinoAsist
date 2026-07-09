@@ -5726,7 +5726,7 @@ export default function AdminDashboard({ user }) {
       {/* EXCEL IMPORT MODAL */}
       {isImportModalOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full shadow-2xl p-6 relative theme-transition animate-in fade-in zoom-in-95 duration-200">
+          <div className="glass-modal rounded-2xl max-w-md w-full shadow-2xl p-6 relative theme-transition animate-in fade-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3 mb-4">
               <h4 className="font-extrabold text-base text-txt-base flex items-center gap-2">
                 <FileSpreadsheet className="w-5 h-5 text-brand-primary" />
@@ -5872,7 +5872,7 @@ export default function AdminDashboard({ user }) {
       {/* EDIT STUDENT MODAL */}
       {showEditStudentModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <h3 className="font-extrabold text-lg">Editar Información del Alumno</h3>
               <button onClick={() => setShowEditStudentModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
@@ -5933,7 +5933,7 @@ export default function AdminDashboard({ user }) {
                 </p>
               </div>
               <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
-                <button type="button" onClick={() => setShowEditStudentModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => setShowEditStudentModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98]">Cancelar</button>
                 <button type="submit" disabled={savingEditStudent} className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5">
                   {savingEditStudent ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Guardar Cambios</span>
@@ -5947,7 +5947,7 @@ export default function AdminDashboard({ user }) {
       {/* 1. EDIT TEACHER MODAL */}
       {showEditTeacherModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <h3 className="font-extrabold text-lg">Editar Información del Docente</h3>
               <button onClick={() => setShowEditTeacherModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
@@ -5985,7 +5985,7 @@ export default function AdminDashboard({ user }) {
                 </select>
               </div>
               <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
-                <button type="button" onClick={() => setShowEditTeacherModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => setShowEditTeacherModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98]">Cancelar</button>
                 <button type="submit" disabled={savingEditTeacher} className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold">
                   {savingEditTeacher ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Guardar Cambios</span>
@@ -5999,7 +5999,7 @@ export default function AdminDashboard({ user }) {
       {/* 2. CREATE TEACHER MODAL */}
       {showCreateTeacherModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <h3 className="font-extrabold text-lg">Registrar Nuevo Docente</h3>
               <button onClick={() => setShowCreateTeacherModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
@@ -6039,7 +6039,7 @@ export default function AdminDashboard({ user }) {
                 </select>
               </div>
               <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
-                <button type="button" onClick={() => setShowCreateTeacherModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => setShowCreateTeacherModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98]">Cancelar</button>
                 <button type="submit" disabled={savingNewTeacher} className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold animate-pulse-subtle">
                   {savingNewTeacher ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Registrar Docente</span>
@@ -6053,7 +6053,7 @@ export default function AdminDashboard({ user }) {
       {/* 3. ASSIGN CLASS MODAL */}
       {showAssignClassModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <h3 className="font-extrabold text-lg">Asignar Materia y Grupo</h3>
               <button onClick={() => setShowAssignClassModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
@@ -6133,7 +6133,7 @@ export default function AdminDashboard({ user }) {
                 </div>
               )}
               <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
-                <button type="button" onClick={() => setShowAssignClassModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => setShowAssignClassModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98]">Cancelar</button>
                 <button type="submit" disabled={savingAssignment} className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold">
                   {savingAssignment ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Asignar Clase</span>
@@ -6147,7 +6147,7 @@ export default function AdminDashboard({ user }) {
       {/* QUICK ASSIGN MODAL */}
       {showQuickAssignModal && selectedSlotForQuickAssign && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <h3 className="font-extrabold text-lg">Asignar Materia Rápida</h3>
               <button onClick={() => setShowQuickAssignModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
@@ -6211,7 +6211,7 @@ export default function AdminDashboard({ user }) {
               )}
 
               <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
-                <button type="button" onClick={() => setShowQuickAssignModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => setShowQuickAssignModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98]">Cancelar</button>
                 <button type="submit" disabled={savingQuickAssignment} className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold">
                   {savingQuickAssignment ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Asignar</span>
@@ -6225,7 +6225,7 @@ export default function AdminDashboard({ user }) {
       {/* CREATE TEMPORARY GROUP MODAL */}
       {showCreateTempGroupModal && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <h3 className="font-extrabold text-lg text-txt-base">Crear Grupo Temporal</h3>
               <button onClick={() => setShowCreateTempGroupModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
@@ -6291,7 +6291,7 @@ export default function AdminDashboard({ user }) {
               )}
 
               <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
-                <button type="button" onClick={() => setShowCreateTempGroupModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                <button type="button" onClick={() => setShowCreateTempGroupModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98]">Cancelar</button>
                 <button type="submit" disabled={savingTempGroup} className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold">
                   {savingTempGroup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Crear Grupo</span>
@@ -6305,7 +6305,7 @@ export default function AdminDashboard({ user }) {
       {/* EDIT CLASS MODAL */}
       {showEditClassModal && editingClassData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <h3 className="font-extrabold text-lg">Gestionar Asignación</h3>
               <button onClick={() => setShowEditClassModal(false)} className="text-txt-muted hover:text-txt-base cursor-pointer text-sm">✕</button>
@@ -6381,7 +6381,7 @@ export default function AdminDashboard({ user }) {
                   <span>Desvincular</span>
                 </button>
                 <div className="flex gap-3">
-                  <button type="button" onClick={() => setShowEditClassModal(false)} className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer">Cancelar</button>
+                  <button type="button" onClick={() => setShowEditClassModal(false)} className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98]">Cancelar</button>
                   <button type="submit" disabled={savingClassEdit} className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5 font-bold">
                     {savingClassEdit ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                     <span>Guardar</span>
@@ -6396,7 +6396,7 @@ export default function AdminDashboard({ user }) {
       {/* 4. RISK MODAL */}
       {showRiskModal && adminTeacherDetail && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 theme-transition max-h-[90vh] flex flex-col relative text-left">
+          <div className="glass-modal rounded-2xl max-w-2xl w-full p-6 shadow-2xl space-y-4 theme-transition max-h-[90vh] flex flex-col relative text-left">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3 shrink-0">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="text-rose-500 w-5 h-5" />
@@ -6448,7 +6448,7 @@ export default function AdminDashboard({ user }) {
       {/* 5. CONFIRMATION MODAL */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-5 text-center theme-transition">
+          <div className="glass-modal rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-5 text-center theme-transition">
             <div className="space-y-2 text-left">
               <h3 className="font-extrabold text-lg text-txt-base">{confirmModal.title}</h3>
               <p className="text-xs text-txt-muted leading-relaxed">{confirmModal.message}</p>
@@ -6457,7 +6457,7 @@ export default function AdminDashboard({ user }) {
               <button 
                 type="button" 
                 onClick={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-                className="px-4 py-2 border border-bdr-base rounded-xl text-xs font-semibold text-txt-muted hover:bg-bg-surface cursor-pointer select-none"
+                className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer interactive-transition hover:scale-[1.02] active:scale-[0.98] select-none"
               >
                 {confirmModal.cancelText}
               </button>
@@ -6480,7 +6480,7 @@ export default function AdminDashboard({ user }) {
       {/* 6. INTERACTIVE CLASS DETAIL MODAL */}
       {selectedClassDetailModal.isOpen && selectedClassDetailModal.classData && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative text-left">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative text-left">
             <div className="flex justify-between items-center border-b border-bdr-base pb-3">
               <div className="flex items-center gap-2">
                 <BookOpen className="text-brand-primary w-5 h-5 shrink-0" />

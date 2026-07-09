@@ -328,7 +328,7 @@ export default function TeacherDashboard({ user }) {
       {/* QR SCANNERS MODAL FOR TEACHERS */}
       {showQRModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 animate-fadeIn">
-          <div className="bg-bg-card border border-bdr-base rounded-3xl p-8 max-w-sm w-full relative shadow-2xl space-y-6 text-center theme-transition">
+          <div className="glass-modal rounded-3xl p-8 max-w-sm w-full relative space-y-6 text-center theme-transition">
             <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary to-blue-500 rounded-3xl blur-xl opacity-20 -z-10 animate-pulse"></div>
 
             <div>

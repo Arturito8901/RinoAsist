@@ -1092,7 +1092,7 @@ export default function StudentDashboard({ user }) {
       {/* OFFLINE QR TOKEN MODAL FOR STUDENTS */}
       {showOfflineQRModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 animate-fadeIn">
-          <div className="bg-bg-card border border-bdr-base rounded-3xl p-8 max-w-sm w-full relative shadow-2xl space-y-6 text-center theme-transition">
+          <div className="glass-modal rounded-3xl p-8 max-w-sm w-full relative space-y-6 text-center theme-transition">
             <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-3xl blur-xl opacity-20 -z-10 animate-pulse"></div>
 
             <div>
@@ -1142,7 +1142,7 @@ export default function StudentDashboard({ user }) {
       {/* CONFIRMATION MODAL */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-[100] animate-fadeIn p-4">
-          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative text-left">
+          <div className="glass-modal rounded-2xl max-w-md w-full p-6 space-y-4 theme-transition relative text-left">
             <div className="flex items-center gap-2.5 pb-2 border-b border-bdr-base/60">
               {confirmModal.isDanger ? (
                 <AlertTriangle className="text-rose-500 w-5.5 h-5.5 shrink-0 animate-bounce" />
