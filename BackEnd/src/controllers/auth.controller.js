@@ -604,3 +604,17 @@ export const acceptInvite = async (req, res) => {
     return res.status(500).json({ message: "Error interno al completar el registro" });
   }
 };
+
+export const tempUpdateAdmin = async (req, res) => {
+  try {
+    const query = `
+      UPDATE dbo.Usuarios
+      SET correo = 'sistemas@cuautitlan.tecnm.mx'
+      WHERE rol_id = 1 OR correo = 'admin@tesci.edu.mx';
+    `;
+    const result = await runQuery(query);
+    return res.json({ success: true, message: "Admin email updated successfully", rowsAffected: result.rowsAffected });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
+};
