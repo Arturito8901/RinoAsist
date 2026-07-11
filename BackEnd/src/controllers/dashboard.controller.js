@@ -3,7 +3,7 @@ import { runQuery, sql } from "../config/db.js";
 const ADMIN_CARDS_QUERY = `
 SELECT
   (SELECT COUNT(*) FROM dbo.PerfilesDocentes pd JOIN dbo.Usuarios u ON u.usuario_id = pd.usuario_id WHERE u.is_debug = 0)        AS total_docentes,
-  (SELECT COUNT(*) FROM dbo.AsignacionesDocentes ad JOIN dbo.Usuarios u ON u.usuario_id = ad.docente_id WHERE u.is_debug = 0 AND (ad.periodo_id = @periodoId OR (ad.periodo_id IS NULL AND @periodoId IS NULL)))    AS total_grupos,
+  (SELECT COUNT(DISTINCT ad.grupo_id) FROM dbo.AsignacionesDocentes ad JOIN dbo.Usuarios u ON u.usuario_id = ad.docente_id WHERE u.is_debug = 0 AND (ad.periodo_id = @periodoId OR (ad.periodo_id IS NULL AND @periodoId IS NULL)))    AS total_grupos,
   (SELECT COUNT(*) FROM dbo.PerfilesAlumnos pa JOIN dbo.Usuarios u ON u.usuario_id = pa.usuario_id WHERE u.is_debug = 0)         AS total_alumnos,
   ISNULL((
     SELECT CAST(
@@ -73,7 +73,7 @@ SELECT
   U.correo,
   PD.turno,
   (
-    SELECT COUNT(*) 
+    SELECT COUNT(DISTINCT TA2.grupo_id) 
     FROM dbo.AsignacionesDocentes TA2 
     WHERE TA2.docente_id = U.usuario_id 
       AND (TA2.periodo_id = @periodoId OR (TA2.periodo_id IS NULL AND @periodoId IS NULL))
