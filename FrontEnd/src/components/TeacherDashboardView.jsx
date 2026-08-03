@@ -2888,7 +2888,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
               <div className="w-48 h-48 bg-slate-550 flex items-center justify-center border border-slate-200 rounded-xl relative overflow-hidden">
                 {qrToken ? (
                   <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrToken)}`} 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/scan?token=${qrToken}`)}`} 
                     alt="Código QR de Asistencia" 
                     className="w-44 h-44 object-contain transition-all duration-300"
                   />

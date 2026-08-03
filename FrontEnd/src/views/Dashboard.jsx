@@ -18,6 +18,13 @@ export default function Dashboard() {
       navigate('/login');
       return;
     }
+
+    // Check if there is a pending scan token and the user is a student
+    if (currentUser.rol === 'alumno' && localStorage.getItem('pending_scan_token')) {
+      navigate('/scan');
+      return;
+    }
+
     setUser(currentUser);
     
     // Fetch active period from database asynchronously to cache in localStorage

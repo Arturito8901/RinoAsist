@@ -62,15 +62,53 @@ export default function ScanAttendance() {
   };
 
   useEffect(() => {
-    if (!user) {
-      navigate('/login');
+    // 1. Intercept URL token on mount
+    const queryParams = new URLSearchParams(window.location.search);
+    const urlToken = queryParams.get('token');
+    if (urlToken) {
+      localStorage.setItem('pending_scan_token', urlToken);
+      // Clean query parameters from address bar
+      window.history.replaceState({}, document.title, window.location.pathname);
     }
-  }, [user, navigate]);
+  }, []);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // If not logged in and we have a token (either just scanned or pending), go to login
+      const hasPending = localStorage.getItem('pending_scan_token');
+      if (hasPending) {
+        navigate('/login');
+      }
+      return;
+    }
 
-    // Initialize scanner
+    const tokenToRegister = localStorage.getItem('pending_scan_token');
+    if (tokenToRegister) {
+      // Automatically register attendance using GPS without turning on the camera
+      setScanning(false);
+      
+      const autoRegister = async () => {
+        try {
+          setStatus({ type: 'loading', message: 'Obteniendo tu ubicación GPS...' });
+          const coords = await getCurrentLocation();
+          
+          setStatus({ type: 'loading', message: 'Registrando tu asistencia de forma automática...' });
+          const res = await api.scanAttendance(tokenToRegister, coords.lat, coords.lon);
+          
+          setStatus({ type: 'success', message: res.message || '¡Asistencia registrada correctamente!' });
+          localStorage.removeItem('pending_scan_token');
+          triggerConfetti();
+        } catch (err) {
+          setStatus({ type: 'error', message: err.message || 'No se pudo registrar asistencia.' });
+          localStorage.removeItem('pending_scan_token'); // Clear so it doesn't loop on refresh
+        }
+      };
+
+      autoRegister();
+      return; // Skip mounting camera scanner
+    }
+
+    // Initialize regular camera scanner
     const scanner = new Html5QrcodeScanner(containerId, {
       fps: 10,
       qrbox: { width: 250, height: 250 },
@@ -80,7 +118,19 @@ export default function ScanAttendance() {
 
     scanner.render(
       async (decodedText) => {
-        // Deactivate scanner immediately on read to prevent duplicate scans
+        // Parse token if student scanned the full URL inside the app
+        let finalToken = decodedText;
+        if (decodedText.includes('/scan?token=')) {
+          try {
+            const urlObj = new URL(decodedText);
+            finalToken = urlObj.searchParams.get('token') || decodedText;
+          } catch {
+            // fallback if URL constructor fails on relative paths
+            const match = decodedText.match(/[?&]token=([^&]+)/);
+            if (match) finalToken = match[1];
+          }
+        }
+
         setScanning(false);
         if (scannerRef.current) {
           scannerRef.current.clear().catch(err => console.warn(err));
@@ -91,7 +141,7 @@ export default function ScanAttendance() {
           const coords = await getCurrentLocation();
           
           setStatus({ type: 'loading', message: 'Registrando asistencia...' });
-          const res = await api.scanAttendance(decodedText, coords.lat, coords.lon);
+          const res = await api.scanAttendance(finalToken, coords.lat, coords.lon);
           setStatus({ type: 'success', message: res.message || '¡Asistencia registrada correctamente!' });
           triggerConfetti();
         } catch (err) {
@@ -99,7 +149,7 @@ export default function ScanAttendance() {
         }
       },
       () => {
-        // Silent error since html5-qrcode outputs many frame-level errors
+        // Silent error
       }
     );
 
@@ -110,7 +160,7 @@ export default function ScanAttendance() {
         scannerRef.current.clear().catch(err => console.log('Clean up scanner error:', err));
       }
     };
-  }, [user]);
+  }, [user, navigate]);
 
   const handleManualSubmit = async (e) => {
     e.preventDefault();
