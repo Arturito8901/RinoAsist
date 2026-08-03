@@ -30,6 +30,7 @@ export default function TeacherDashboard({ user }) {
   const [qrCodeTimer, setQrCodeTimer] = useState(30);
   const [qrToken, setQrToken] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isCycleDropdownOpen, setIsCycleDropdownOpen] = useState(false);
 
   useEffect(() => {
     const fetchGroups = async () => {
@@ -134,6 +135,73 @@ export default function TeacherDashboard({ user }) {
     setQrCodeTimer(30);
     setQrToken(''); // Clear previous
     await loadQrToken(groupId);
+  };
+
+  const getAvailableCycles = (currentClave) => {
+    const baseClave = "2026-1";
+    const cycles = [baseClave];
+    let tempClave = baseClave;
+    
+    let safetyCounter = 0;
+    let targetFutureCycles = 2;
+    let foundCurrent = (tempClave === currentClave);
+    let futureCount = 0;
+
+    while (safetyCounter < 50) {
+      if (foundCurrent) {
+        futureCount++;
+        if (futureCount > targetFutureCycles) {
+          break;
+        }
+      }
+
+      const isInter = tempClave.toUpperCase().includes("INTER");
+      const yearMatch = tempClave.match(/\d{4}/);
+      const year = yearMatch ? parseInt(yearMatch[0]) : new Date().getFullYear();
+      
+      if (isInter) {
+        if (tempClave.endsWith("-1") || tempClave.endsWith(" 1")) {
+          tempClave = `${year}-2`;
+        } else {
+          tempClave = `${year + 1}-1`;
+        }
+      } else {
+        if (tempClave.endsWith("-1") || tempClave.endsWith(" 1")) {
+          tempClave = `Inter ${year}-1`;
+        } else {
+          tempClave = `Inter ${year}-2`;
+        }
+      }
+
+      if (!cycles.includes(tempClave)) {
+        cycles.push(tempClave);
+      }
+
+      if (tempClave === currentClave) {
+        foundCurrent = true;
+      }
+      
+      safetyCounter++;
+    }
+
+    if (!cycles.includes(currentClave) && currentClave) {
+      cycles.unshift(currentClave);
+    }
+
+    return cycles;
+  };
+
+  const schoolCyclesList = getAvailableCycles(getSchoolCycle());
+
+  const handleCycleChange = async (cycleClave) => {
+    try {
+      setLoading(true);
+      await api.setActivePeriodoByClave(cycleClave);
+      window.location.reload();
+    } catch (err) {
+      alert(err.message || 'Error al cambiar de ciclo escolar');
+      setLoading(false);
+    }
   };
 
   const handleLogout = () => {
@@ -322,9 +390,39 @@ export default function TeacherDashboard({ user }) {
             <div className="hidden md:block">
               <ThemeToggle />
             </div>
-            <div className="flex items-center gap-2.5 bg-bg-surface border border-bdr-base px-4 py-2 rounded-xl text-sm font-semibold text-txt-muted theme-transition">
-              <Layers className="w-4 h-4 text-brand-primary" />
-              <span>Ciclo: {getSchoolCycle()}</span>
+            <div className="relative">
+              <button 
+                onClick={() => setIsCycleDropdownOpen(!isCycleDropdownOpen)}
+                className="flex items-center gap-2.5 bg-bg-surface hover:bg-bg-surface/85 border border-bdr-base px-4 py-2 rounded-xl text-sm font-semibold text-txt-muted theme-transition cursor-pointer select-none"
+              >
+                <Layers className="w-4 h-4 text-brand-primary" />
+                <span>Ciclo: {getSchoolCycle()}</span>
+                <ChevronDown className="w-3.5 h-3.5 text-txt-muted" />
+              </button>
+              
+              {isCycleDropdownOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setIsCycleDropdownOpen(false)} />
+                  <div className="absolute right-0 mt-2 w-48 bg-bg-card border border-bdr-base rounded-xl shadow-xl z-20 py-1.5 max-h-60 overflow-y-auto theme-transition text-left">
+                    {schoolCyclesList.map((cycle) => (
+                      <button
+                        key={cycle}
+                        onClick={() => {
+                          handleCycleChange(cycle);
+                          setIsCycleDropdownOpen(false);
+                        }}
+                        className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors ${
+                          getSchoolCycle() === cycle 
+                            ? 'text-brand-primary bg-brand-primary/10' 
+                            : 'text-txt-subtle hover:text-txt-base hover:bg-bg-surface'
+                        }`}
+                      >
+                        {cycle}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
             <div className="flex items-center gap-2.5 bg-bg-surface border border-bdr-base px-4 py-2 rounded-xl text-sm font-semibold text-txt-muted theme-transition">
               <Calendar className="w-4 h-4 text-brand-primary" />
