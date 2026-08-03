@@ -77,8 +77,58 @@ export default function TeacherDashboard({ user }) {
     }
   }
 
+  const isCurrentTimeInSchedule = (scheduleStr) => {
+    if (!scheduleStr) return true;
+
+    const now = new Date();
+    const currentDay = now.getDay(); // 0 = Domingo, 1 = Lunes, ... 6 = Sábado
+    const currentHours = now.getHours();
+    const currentMinutes = now.getMinutes();
+    const currentTimeInMinutes = currentHours * 60 + currentMinutes;
+
+    const scheduleLower = scheduleStr.toLowerCase();
+    const days = [];
+    if (scheduleLower.includes("lu") || scheduleLower.includes("lunes")) days.push(1);
+    if (scheduleLower.includes("ma") || scheduleLower.includes("martes")) days.push(2);
+    if (scheduleLower.includes("mi") || scheduleLower.includes("miercoles") || scheduleLower.includes("miércoles")) days.push(3);
+    if (scheduleLower.includes("ju") || scheduleLower.includes("jueves")) days.push(4);
+    if (scheduleLower.includes("vi") || scheduleLower.includes("viernes")) days.push(5);
+    if (scheduleLower.includes("sa") || scheduleLower.includes("sabado") || scheduleLower.includes("sábado")) days.push(6);
+    if (scheduleLower.includes("do") || scheduleLower.includes("domingo")) days.push(0);
+
+    if (days.length === 0) return true;
+    if (!days.includes(currentDay)) return false;
+
+    const timeRegex = /(\d{2}):(\d{2})/g;
+    const matches = [];
+    let match;
+    while ((match = timeRegex.exec(scheduleLower)) !== null) {
+      matches.push(parseInt(match[1]) * 60 + parseInt(match[2]));
+    }
+
+    if (matches.length === 0) return true;
+
+    let startMinutes = matches[0];
+    let endMinutes = matches[1];
+
+    if (matches.length === 1) {
+      endMinutes = startMinutes + 120; // Default 2 hours
+    }
+
+    return currentTimeInMinutes >= startMinutes && currentTimeInMinutes <= endMinutes;
+  };
+
   const handleOpenQRModal = async (groupId = selectedGroupId) => {
     if (!groupId) return;
+
+    // Validate schedule check before opening modal
+    const selectedGroup = teacherGroups.find(g => g.id.toString() === groupId.toString());
+    const scheduleStr = selectedGroup?.schedule;
+    if (!isCurrentTimeInSchedule(scheduleStr)) {
+      alert(`No está permitido iniciar el pase de lista QR fuera del horario programado para esta clase (${scheduleStr || 'Sin horario programado'}).`);
+      return;
+    }
+
     setSelectedGroupId(groupId);
     setShowQRModal(true);
     setQrCodeTimer(30);
@@ -340,7 +390,7 @@ export default function TeacherDashboard({ user }) {
               <div className="w-48 h-48 bg-slate-50 flex items-center justify-center border border-slate-200 rounded-xl relative overflow-hidden">
                 {qrToken ? (
                   <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrToken)}`} 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(`${window.location.origin}/scan?token=${qrToken}`)}`} 
                     alt="Código QR de Asistencia" 
                     className="w-44 h-44 object-contain transition-all duration-300"
                   />
