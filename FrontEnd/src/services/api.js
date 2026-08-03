@@ -28,13 +28,22 @@ export const getSchoolCycle = () => {
   
   const date = new Date();
   const year = date.getFullYear();
-  const month = date.getMonth();
+  const month = date.getMonth(); // 0 = Enero, 1 = Febrero, ..., 7 = Agosto, 8 = Septiembre
   
-  if (month >= 1 && month <= 6) {
-    return `${year}-1`;
-  } else if (month === 0) {
+  if (month === 0) {
+    // Enero: Ciclo escolar 2 del año anterior
     return `${year - 1}-2`;
+  } else if (month === 1) {
+    // Febrero: Intersemestral 2 del año anterior (Curso Intersemestral Febrero del año actual)
+    return `Inter ${year - 1}-2`;
+  } else if (month >= 2 && month <= 6) {
+    // Marzo a Julio: Ciclo escolar 1 del año actual
+    return `${year}-1`;
+  } else if (month === 7) {
+    // Agosto: Intersemestral 1 del año actual (Curso Intersemestral Agosto del año actual)
+    return `Inter ${year}-1`;
   } else {
+    // Septiembre a Diciembre: Ciclo escolar 2 del año actual
     return `${year}-2`;
   }
 };
