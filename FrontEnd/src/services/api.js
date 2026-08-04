@@ -24,6 +24,8 @@ const BASE_URL = getBaseUrl();
 let cachedSchoolCycle = localStorage.getItem('active_school_cycle') || null;
 
 export const getSchoolCycle = () => {
+  const selected = localStorage.getItem('selected_school_cycle');
+  if (selected) return selected;
   if (cachedSchoolCycle) return cachedSchoolCycle;
   
   const date = new Date();
@@ -405,9 +407,12 @@ export const api = {
 
   },
 
-  getTeacherOverview: async (docenteId, weekId = 'w1') => {
+  getTeacherOverview: async (docenteId, weekId = 'w1', ciclo = null) => {
     
-  const url = docenteId ? `${BASE_URL}/dashboard/docente/overview?docenteId=${docenteId}` : `${BASE_URL}/dashboard/docente/overview`;
+  let url = docenteId ? `${BASE_URL}/dashboard/docente/overview?docenteId=${docenteId}` : `${BASE_URL}/dashboard/docente/overview`;
+  if (ciclo) {
+    url += (url.includes('?') ? '&' : '?') + `ciclo=${encodeURIComponent(ciclo)}`;
+  }
   const res = await fetch(url, {
     headers: getHeaders()
   });
@@ -521,9 +526,13 @@ export const api = {
   },
 
   // --- TEACHER OPERATIONS ---
-  getTeacherGroups: async () => {
+  getTeacherGroups: async (ciclo = null) => {
     
-  const res = await fetch(`${BASE_URL}/dashboard/docente/overview`, {
+  let url = `${BASE_URL}/dashboard/docente/overview`;
+  if (ciclo) {
+    url += `?ciclo=${encodeURIComponent(ciclo)}`;
+  }
+  const res = await fetch(url, {
     headers: getHeaders()
   });
   if (!res.ok) throw new Error('Error al obtener grupos del docente');

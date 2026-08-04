@@ -18,6 +18,10 @@ export default function TeacherDashboard({ user }) {
   const navigate = useNavigate();
   const { theme, isDark } = useTheme();
   
+  const activeCycle = localStorage.getItem('active_school_cycle') || getSchoolCycle();
+  const selectedCycle = getSchoolCycle();
+  const isReadOnly = activeCycle && selectedCycle && activeCycle !== selectedCycle;
+
   // Layout states
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -35,7 +39,7 @@ export default function TeacherDashboard({ user }) {
   useEffect(() => {
     const fetchGroups = async () => {
       try {
-        const groups = await api.getTeacherGroups();
+        const groups = await api.getTeacherGroups(getSchoolCycle());
         setTeacherGroups(groups);
         if (groups.length > 0) {
           setSelectedGroupId(groups[0].id);
@@ -193,15 +197,10 @@ export default function TeacherDashboard({ user }) {
 
   const schoolCyclesList = getAvailableCycles(getSchoolCycle());
 
-  const handleCycleChange = async (cycleClave) => {
-    try {
-      setLoading(true);
-      await api.setActivePeriodoByClave(cycleClave);
-      window.location.reload();
-    } catch (err) {
-      alert(err.message || 'Error al cambiar de ciclo escolar');
-      setLoading(false);
-    }
+  const handleCycleChange = (cycleClave) => {
+    setLoading(true);
+    localStorage.setItem('selected_school_cycle', cycleClave);
+    window.location.reload();
   };
 
   const handleLogout = () => {
@@ -431,6 +430,24 @@ export default function TeacherDashboard({ user }) {
           </div>
         </div>
 
+        {/* Read-Only Cycle Warning Banner */}
+        {isReadOnly && (
+          <div className="bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-4 rounded-2xl flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 text-sm font-semibold mb-6 animate-fadeIn text-left">
+            <div className="flex items-center gap-2">
+              <span>⚠️ Estás visualizando el ciclo escolar <strong>{selectedCycle}</strong>, el cual no es el ciclo actual. La información se muestra en modo de solo lectura.</span>
+            </div>
+            <button
+              onClick={() => {
+                localStorage.removeItem('selected_school_cycle');
+                window.location.reload();
+              }}
+              className="bg-amber-500 hover:bg-amber-600 text-white dark:text-slate-950 font-bold px-4 py-2 rounded-xl text-xs transition-colors cursor-pointer shrink-0"
+            >
+              Regresar al ciclo actual
+            </button>
+          </div>
+        )}
+
         {/* Welcome Header Card */}
         <div className="bg-bg-card border border-bdr-base p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 theme-transition text-left relative overflow-hidden mb-8">
           <div className="absolute -inset-[1px] bg-gradient-to-r from-brand-primary/10 to-blue-500/10 rounded-3xl -z-10"></div>
@@ -455,13 +472,15 @@ export default function TeacherDashboard({ user }) {
             </div>
           </div>
 
-          <button 
-            onClick={() => handleOpenQRModal()}
-            className="bg-brand-primary hover:bg-brand-hover text-white font-semibold text-sm px-5 py-3 rounded-xl shadow-md hover:shadow-lg hover:shadow-brand-primary/10 active:scale-95 transition-all cursor-pointer flex items-center gap-2 shrink-0"
-          >
-            <QrCode className="w-4.5 h-4.5" />
-            Proyectar QR
-          </button>
+          {!isReadOnly && (
+            <button 
+              onClick={() => handleOpenQRModal()}
+              className="bg-brand-primary hover:bg-brand-hover text-white font-semibold text-sm px-5 py-3 rounded-xl shadow-md hover:shadow-lg hover:shadow-brand-primary/10 active:scale-95 transition-all cursor-pointer flex items-center gap-2 shrink-0"
+            >
+              <QrCode className="w-4.5 h-4.5" />
+              Proyectar QR
+            </button>
+          )}
         </div>
 
         {/* Render Teacher Views */}
@@ -470,6 +489,8 @@ export default function TeacherDashboard({ user }) {
           setActiveTab={setActiveTab}
           user={user}
           isSidebarCollapsed={isSidebarCollapsed}
+          isReadOnly={isReadOnly}
+          selectedCycle={selectedCycle}
         />
       </main>
 

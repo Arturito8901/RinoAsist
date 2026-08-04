@@ -644,7 +644,7 @@ export const getAdminSummary = async (req, res) => {
 };
 
 export const getTeacherOverview = async (req, res) => {
-  const { q = null, docenteId: docenteIdQuery } = req.query;
+  const { q = null, docenteId: docenteIdQuery, ciclo = null } = req.query;
   const requesterRole = req.user?.rol || req.user?.role;
   const targetDocenteId =
     requesterRole === "admin" && docenteIdQuery
@@ -656,10 +656,18 @@ export const getTeacherOverview = async (req, res) => {
   }
 
   try {
-    const activePeriodResult = await runQuery(`
-      SELECT TOP 1 periodo_id FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
-    `);
-    const periodoId = activePeriodResult.recordset[0]?.periodo_id || null;
+    let periodoId = null;
+    if (ciclo) {
+      const periodResult = await runQuery(`
+        SELECT TOP 1 periodo_id FROM dbo.PeriodosEscolares WHERE clave = @ciclo
+      `, [{ name: "ciclo", type: sql.VarChar, value: ciclo }]);
+      periodoId = periodResult.recordset[0]?.periodo_id || null;
+    } else {
+      const activePeriodResult = await runQuery(`
+        SELECT TOP 1 periodo_id FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
+      `);
+      periodoId = activePeriodResult.recordset[0]?.periodo_id || null;
+    }
 
     const [groupsResult, seriesResult, sessionsResult, riskStudentsResult] = await Promise.all([
       runQuery(TEACHER_GROUPS_QUERY, [

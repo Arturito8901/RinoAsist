@@ -49,7 +49,7 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export default function TeacherDashboardView({ activeTab, setActiveTab, user, isSidebarCollapsed }) {
+export default function TeacherDashboardView({ activeTab, setActiveTab, user, isSidebarCollapsed, isReadOnly = false, selectedCycle = null }) {
   const { isDark } = useTheme();
 
   // State Management
@@ -293,6 +293,10 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
   };
 
   const handleOpenCredentialScanner = () => {
+    if (isReadOnly) {
+      alert("No está permitido abrir el escáner de credenciales en modo de solo lectura.");
+      return;
+    }
     // Validar horario antes de abrir el escáner de credenciales físicas
     if (selectedGroupId) {
       const selectedGroup = teacherGroups.find(g => g.id.toString() === selectedGroupId.toString());
@@ -543,7 +547,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
   async function loadGroupsAndInitialData() {
     setLoadingGroups(true);
     try {
-      const groups = await api.getTeacherGroups();
+      const groups = await api.getTeacherGroups(selectedCycle);
       setTeacherGroups(groups);
       if (groups.length > 0) {
         const activeId = detectCurrentActiveGroup(groups);
@@ -559,7 +563,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
   async function loadOverviewData() {
     setLoadingOverview(true);
     try {
-      const overview = await api.getTeacherOverview(user.id, selectedWeek);
+      const overview = await api.getTeacherOverview(user.id, selectedWeek, selectedCycle);
       setTeacherOverview(overview);
     } catch (err) {
       console.error("Error loading teacher overview:", err);
@@ -745,6 +749,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
   };
 
   const handleStatusChange = (studentId, status) => {
+    if (isReadOnly) return;
     setAttendanceRecords(prev => ({
       ...prev,
       [studentId]: status
@@ -752,6 +757,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
   };
 
   const handleNoteChange = (studentId, noteText) => {
+    if (isReadOnly) return;
     setAttendanceNotes(prev => ({
       ...prev,
       [studentId]: noteText
@@ -760,6 +766,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
 
   // Bulk status changes (Aesthetic feature!)
   const handleBulkStatusChange = (status) => {
+    if (isReadOnly) return;
     const updated = {};
     students.forEach(s => {
       updated[s.id] = status;
@@ -1755,31 +1762,33 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
             </div>
 
             {/* Action buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto self-stretch lg:self-auto">
-              <button 
-                onClick={() => setShowToleranceSettings(!showToleranceSettings)}
-                className="bg-bg-surface border border-bdr-base hover:bg-bg-surface/80 text-txt-base font-bold py-3 px-5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Clock className="w-4 h-4 text-txt-muted" />
-                <span>Tolerancias QR</span>
-              </button>
+            {!isReadOnly && (
+              <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto self-stretch lg:self-auto">
+                <button 
+                  onClick={() => setShowToleranceSettings(!showToleranceSettings)}
+                  className="bg-bg-surface border border-bdr-base hover:bg-bg-surface/80 text-txt-base font-bold py-3 px-5 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Clock className="w-4 h-4 text-txt-muted" />
+                  <span>Tolerancias QR</span>
+                </button>
 
-              <button 
-                onClick={() => handleOpenQRModal()}
-                className="bg-brand-primary hover:bg-brand-hover text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all flex items-center gap-2.5 justify-center cursor-pointer animate-fadeIn"
-              >
-                <QrCode className="w-5 h-5" />
-                <span>Iniciar Escáner QR</span>
-              </button>
+                <button 
+                  onClick={() => handleOpenQRModal()}
+                  className="bg-brand-primary hover:bg-brand-hover text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-brand-primary/20 hover:scale-[1.02] transition-all flex items-center gap-2.5 justify-center cursor-pointer animate-fadeIn"
+                >
+                  <QrCode className="w-5 h-5" />
+                  <span>Iniciar Escáner QR</span>
+                </button>
 
-              <button 
-                onClick={handleOpenCredentialScanner}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-emerald-600/20 hover:scale-[1.02] transition-all flex items-center gap-2.5 justify-center cursor-pointer animate-fadeIn"
-              >
-                <Camera className="w-5 h-5" />
-                <span>Escanear Credenciales</span>
-              </button>
-            </div>
+                <button 
+                  onClick={handleOpenCredentialScanner}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-6 rounded-xl shadow-lg shadow-emerald-600/20 hover:scale-[1.02] transition-all flex items-center gap-2.5 justify-center cursor-pointer animate-fadeIn"
+                >
+                  <Camera className="w-5 h-5" />
+                  <span>Escanear Credenciales</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* QR Tolerances configuration panel */}
@@ -2086,10 +2095,10 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                             {/* Option A */}
                             <button
                               onClick={() => handleStatusChange(student.id, 'A')}
-                              disabled={!isToday}
+                              disabled={!isToday || isReadOnly}
                               className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all duration-300 disabled:opacity-75 disabled:cursor-not-allowed ${
                                 attendanceRecords[student.id] === 'A'
-                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-450 border-emerald-500/40 shadow-sm'
+                                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-455 border-emerald-500/40 shadow-sm'
                                   : 'bg-bg-surface text-txt-muted border-bdr-base hover:border-brand-primary/40 hover:text-brand-primary'
                               }`}
                             >
@@ -2099,7 +2108,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                             {/* Option F */}
                             <button
                               onClick={() => handleStatusChange(student.id, 'F')}
-                              disabled={!isToday}
+                              disabled={!isToday || isReadOnly}
                               className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all duration-300 disabled:opacity-75 disabled:cursor-not-allowed ${
                                 attendanceRecords[student.id] === 'F'
                                   ? 'bg-rose-500/10 text-rose-600 dark:text-rose-455 border-rose-500/40 shadow-sm'
@@ -2112,7 +2121,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                             {/* Option R */}
                             <button
                               onClick={() => handleStatusChange(student.id, 'R')}
-                              disabled={!isToday}
+                              disabled={!isToday || isReadOnly}
                               className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all duration-300 disabled:opacity-75 disabled:cursor-not-allowed ${
                                 attendanceRecords[student.id] === 'R'
                                   ? 'bg-amber-500/10 text-amber-600 dark:text-amber-450 border-amber-500/40 shadow-sm'
@@ -2125,7 +2134,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                             {/* Option J */}
                             <button
                               onClick={() => handleStatusChange(student.id, 'J')}
-                              disabled={!isToday}
+                              disabled={!isToday || isReadOnly}
                               className={`text-[11px] font-bold px-3 py-1.5 rounded-lg border transition-all duration-300 disabled:opacity-75 disabled:cursor-not-allowed ${
                                 attendanceRecords[student.id] === 'J'
                                   ? 'bg-brand-primary/10 text-brand-primary border-brand-primary/30 shadow-sm'
@@ -2141,8 +2150,8 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                             type="text"
                             value={attendanceNotes[student.id] || ''}
                             onChange={(e) => handleNoteChange(student.id, e.target.value)}
-                            disabled={!isToday}
-                            placeholder={isToday ? "Agregar nota..." : "Sin nota"}
+                            disabled={!isToday || isReadOnly}
+                            placeholder={isToday && !isReadOnly ? "Agregar nota..." : "Sin nota"}
                             className="bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-3 py-1.5 text-xs w-full max-w-[200px] outline-none theme-transition disabled:opacity-75 disabled:cursor-not-allowed"
                           />
                         </td>
@@ -2189,7 +2198,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                 <span>Matriz Mensual (Excel)</span>
               </button>
 
-              {isToday && (
+              {isToday && !isReadOnly && (
                 <button
                   onClick={handleSaveClick}
                   disabled={savingAttendance || students.length === 0}
