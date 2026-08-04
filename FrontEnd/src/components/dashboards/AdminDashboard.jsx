@@ -283,6 +283,8 @@ export default function AdminDashboard({ user }) {
       setStudentSearchQuery('');
       setStudentSearchResults([]);
       await loadIntersemestralData();
+      const updatedList = await api.getIntersemestralStudents(selectedInterClassId);
+      setInterStudents(updatedList);
     } catch (err) {
       alert(err.message || 'Error al inscribir al alumno');
     }
@@ -297,6 +299,8 @@ export default function AdminDashboard({ user }) {
       await api.deregisterStudentIntersemestral(alumnoId, selectedInterClassId);
       await loadIntersemestralData();
       await refreshDashboardData();
+      const updatedList = await api.getIntersemestralStudents(selectedInterClassId);
+      setInterStudents(updatedList);
     } catch (err) {
       alert(err.message || 'Error al desvincular al alumno');
     }
