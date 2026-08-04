@@ -661,7 +661,7 @@ export const getTeacherOverview = async (req, res) => {
       const periodResult = await runQuery(`
         SELECT TOP 1 periodo_id FROM dbo.PeriodosEscolares WHERE clave = @ciclo
       `, [{ name: "ciclo", type: sql.VarChar, value: ciclo }]);
-      periodoId = periodResult.recordset[0]?.periodo_id || null;
+      periodoId = periodResult.recordset[0]?.periodo_id || -999;
     } else {
       const activePeriodResult = await runQuery(`
         SELECT TOP 1 periodo_id FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
