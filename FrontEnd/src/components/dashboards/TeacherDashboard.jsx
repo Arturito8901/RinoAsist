@@ -553,14 +553,21 @@ export default function TeacherDashboard({ user }) {
       {/* QR SCANNERS MODAL FOR TEACHERS */}
       {showQRModal && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-6 animate-fadeIn">
-          <div className="glass-modal rounded-3xl p-8 max-w-sm w-full relative space-y-6 text-center theme-transition">
+          <div className="bg-bg-card border border-bdr-base rounded-3xl p-8 max-w-sm w-full relative shadow-2xl space-y-6 text-center theme-transition">
+            {/* Glowing background */}
             <div className="absolute -inset-1 bg-gradient-to-r from-brand-primary to-blue-500 rounded-3xl blur-xl opacity-20 -z-10 animate-pulse"></div>
 
-            <div>
-              <h3 className="text-xl font-bold">Código QR Dinámico</h3>
-              <p className="text-xs text-txt-muted mt-1">Escanear para auto-registrar asistencia en el grupo seleccionado.</p>
+            <div className="space-y-3">
+              <div className="flex items-center justify-center gap-2.5">
+                <img src="/isc_logo.jpg" alt="Logo ISC" className="h-10 w-auto object-contain rounded-lg shadow-sm border border-bdr-base/40 bg-white" />
+                <h3 className="text-xl font-bold text-left leading-none">Código QR<br/><span className="text-xs text-brand-primary font-bold">RinoAsist ISC</span></h3>
+              </div>
+              <p className="text-xs text-txt-muted">
+                Escanear para auto-registrar asistencia en <strong className="text-txt-base">{teacherGroups.find(g => g.id.toString() === selectedGroupId.toString())?.name}</strong>.
+              </p>
             </div>
 
+            {/* QR Code Graphic Frame */}
             <div className="bg-white p-6 rounded-2xl inline-block shadow-lg mx-auto relative group">
               <div className="w-48 h-48 bg-slate-50 flex items-center justify-center border border-slate-200 rounded-xl relative overflow-hidden">
                 {qrToken ? (
@@ -572,22 +579,60 @@ export default function TeacherDashboard({ user }) {
                 ) : (
                   <RefreshCw className="w-8 h-8 text-brand-primary animate-spin" />
                 )}
+                {/* Scanner bar line */}
                 <div className="absolute left-0 right-0 h-0.5 bg-rose-500/80 shadow-md shadow-rose-500 animate-bounce top-1/2"></div>
               </div>
             </div>
 
-            <div className="space-y-1">
-              <div className="text-xs font-semibold text-brand-primary">Actualizando en {qrCodeTimer}s</div>
-              <div className="w-full bg-bg-surface border border-bdr-base/60 h-1.5 rounded-full overflow-hidden theme-transition">
-                <div 
-                  className="bg-brand-primary h-1.5 transition-all duration-1000 ease-linear" 
-                  style={{ width: `${(qrCodeTimer / 30) * 100}%` }}
-                ></div>
+            {/* Manual Code Input Backup */}
+            {qrToken && (
+              <div className="bg-bg-surface border border-bdr-base/70 rounded-xl p-3 text-center theme-transition">
+                <span className="text-[9px] text-txt-subtle uppercase block font-bold tracking-wider mb-1">Código de Respaldo Manual</span>
+                <span className="text-xs font-mono font-bold select-all bg-bg-card border border-bdr-base rounded px-2.5 py-1 inline-block text-brand-primary tracking-wide">
+                  {qrToken}
+                </span>
+              </div>
+            )}
+
+            {/* Timer indicators - Circular Progress Ring */}
+            <div className="flex flex-col items-center justify-center space-y-2 py-2">
+              <div className="relative flex items-center justify-center">
+                <svg className="w-14 h-14 transform -rotate-90">
+                  {/* Background Circle */}
+                  <circle
+                    cx="28"
+                    cy="28"
+                    r="24"
+                    stroke="currentColor"
+                    className="text-bg-surface dark:text-bg-surface/30"
+                    strokeWidth="3.5"
+                    fill="transparent"
+                  />
+                  {/* Progress Circle */}
+                  <circle
+                    cx="28"
+                    cy="28"
+                    r="24"
+                    stroke="currentColor"
+                    className="text-brand-primary transition-all duration-1000 ease-linear"
+                    strokeWidth="3.5"
+                    fill="transparent"
+                    strokeDasharray={150.8}
+                    strokeDashoffset={150.8 * (1 - qrCodeTimer / 30)}
+                    strokeLinecap="round"
+                  />
+                </svg>
+                <div className="absolute font-mono font-bold text-xs text-txt-base">
+                  {qrCodeTimer}s
+                </div>
+              </div>
+              <div className="text-[9px] font-extrabold text-txt-subtle uppercase tracking-widest">
+                Rotando Código QR
               </div>
             </div>
 
             <p className="text-[10px] text-txt-subtle leading-normal">
-              Este código cambia de firma periódicamente para evitar pases de lista fraudulentos o capturas de pantalla fuera del aula.
+              Este código de asistencia cambia de firma periódicamente para evitar fraudes en el registro escolar.
             </p>
 
             <button
