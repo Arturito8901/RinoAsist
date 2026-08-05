@@ -49,13 +49,11 @@ const CustomTooltip = ({ active, payload, label }) => {
   return null;
 };
 
-export default function TeacherDashboardView({ activeTab, setActiveTab, user, isSidebarCollapsed, isReadOnly = false, selectedCycle = null }) {
+export default function TeacherDashboardView({ activeTab, setActiveTab, user, isSidebarCollapsed, isReadOnly = false, selectedCycle = null, teacherGroups = [], selectedGroupId = '', setSelectedGroupId }) {
   const { isDark } = useTheme();
 
   // State Management
   const [selectedWeek, setSelectedWeek] = useState('w1');
-  const [teacherGroups, setTeacherGroups] = useState([]);
-  const [selectedGroupId, setSelectedGroupId] = useState('');
   const [students, setStudents] = useState([]);
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().split('T')[0]);
   const [attendanceRecords, setAttendanceRecords] = useState({}); // { studentId: 'A' | 'F' | 'R' | 'J' }
@@ -75,7 +73,6 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
   // Overview info
   const [teacherOverview, setTeacherOverview] = useState(null);
   const [loadingOverview, setLoadingOverview] = useState(true);
-  const [loadingGroups, setLoadingGroups] = useState(true);
 
   // QR Modal
   const [showQRModal, setShowQRModal] = useState(false);
@@ -456,10 +453,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
     setShowToleranceSettings(false);
   };
 
-  // 1. Initial Load of teacher groups
-  useEffect(() => {
-    loadGroupsAndInitialData();
-  }, []);
+
 
   // 2. Load overview details when week changes
   useEffect(() => {
@@ -492,73 +486,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
     return () => clearInterval(interval);
   }, [showQRModal, selectedGroupId]);
 
-  const detectCurrentActiveGroup = (groups) => {
-    if (!groups || groups.length === 0) return null;
-    
-    const now = new Date();
-    const dayNames = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado'];
-    const currentDay = dayNames[now.getDay()];
-    const currentHour = now.getHours();
-    
-    for (const g of groups) {
-      const scheduleStr = g.schedule || '';
-      const parts = scheduleStr.split(',').map(p => p.trim());
-      
-      for (const part of parts) {
-        const matchDay = part.match(/^(Lu|Ma|Mi|Ju|Vi|Sa|Lunes|Martes|Miércoles|Miercoles|Jueves|Viernes|Sábado|Sabado)\b/i);
-        if (!matchDay) continue;
-        const dayName = matchDay[1].toLowerCase();
-        let matchesDay = false;
-        
-        if (dayName.startsWith('lu') && currentDay === 'Lunes') matchesDay = true;
-        else if (dayName.startsWith('ma') && currentDay === 'Martes') matchesDay = true;
-        else if (dayName.startsWith('mi') && currentDay === 'Miércoles') matchesDay = true;
-        else if (dayName.startsWith('ju') && currentDay === 'Jueves') matchesDay = true;
-        else if (dayName.startsWith('vi') && currentDay === 'Viernes') matchesDay = true;
-        else if ((dayName.startsWith('sa') || dayName.startsWith('sá')) && currentDay === 'Sábado') matchesDay = true;
-        
-        if (!matchesDay) continue;
-        
-        let start = null;
-        let end = null;
-        
-        let matchTime = part.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
-        if (matchTime) {
-          start = parseInt(matchTime[1]);
-          end = Math.ceil(parseInt(matchTime[3]) + parseInt(matchTime[4])/60);
-        } else {
-          matchTime = part.match(/(\d{1,2})\s*-\s*(\d{1,2})/);
-          if (matchTime) {
-            start = parseInt(matchTime[1]);
-            end = parseInt(matchTime[2]);
-          }
-        }
-        
-        if (start !== null && end !== null) {
-          if (currentHour >= start && currentHour < end) {
-            return g.id;
-          }
-        }
-      }
-    }
-    return groups[0].id;
-  };
 
-  async function loadGroupsAndInitialData() {
-    setLoadingGroups(true);
-    try {
-      const groups = await api.getTeacherGroups(selectedCycle);
-      setTeacherGroups(groups);
-      if (groups.length > 0) {
-        const activeId = detectCurrentActiveGroup(groups);
-        setSelectedGroupId(activeId);
-      }
-    } catch (err) {
-      console.error("Error loading teacher groups:", err);
-    } finally {
-      setLoadingGroups(false);
-    }
-  }
 
   async function loadOverviewData() {
     setLoadingOverview(true);
