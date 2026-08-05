@@ -767,7 +767,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
     
     const headers = ['ID Alumno', 'Nombre Completo', 'Porcentaje Asistencia Acumulado', 'Asistencia Hoy', 'Observaciones'];
     const rows = sorted.map(s => [
-      s.id,
+      s.controlNumber || s.id,
       s.name,
       `${s.attendanceRate}%`,
       attendanceRecords[s.id] === 'A' ? 'Asistio (A)' :
@@ -893,7 +893,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                                     status === 'J' ? 'Justificado' : 'Asistió';
                 return `
                   <tr>
-                    <td style="font-family: monospace; font-weight: 600; color: #64748b;">${s.id}</td>
+                    <td style="font-family: monospace; font-weight: 600; color: #64748b;">${s.controlNumber || s.id}</td>
                     <td style="font-weight: 600; color: #0f172a;">${s.name}</td>
                     <td>
                       <span class="${s.attendanceRate < 80 ? 'rate-risk' : 'rate-normal'}">
@@ -1055,7 +1055,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
         
         htmlContent += `
           <tr>
-            <td style="font-family: monospace;">${student.id}</td>
+            <td style="font-family: monospace;">${student.controlNumber || student.id}</td>
             <td style="font-weight: bold;">${student.name}</td>
             ${rowCells.join('')}
             <td class="totals-col" style="text-align: center;">${totalSessions}</td>
@@ -1996,7 +1996,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                     const isAtRisk = student.attendanceRate < 80;
                     return (
                       <tr key={student.id} className="hover:bg-bg-surface/30 transition-colors duration-200">
-                        <td className="py-4 px-6 font-mono text-xs font-semibold text-txt-subtle">{student.id}</td>
+                        <td className="py-4 px-6 font-mono text-xs font-semibold text-txt-subtle">{student.controlNumber || student.id}</td>
                         <td className="py-4 px-6 text-left">
                           <button
                             type="button"
@@ -2178,7 +2178,7 @@ export default function TeacherDashboardView({ activeTab, setActiveTab, user, is
                 <tbody className="divide-y divide-bdr-subtle/50 theme-transition">
                   {teacherOverview?.alumnosEnRiesgo?.map((s) => (
                     <tr key={s.id} className="hover:bg-bg-surface/30">
-                      <td className="py-4 px-6 font-mono text-xs font-semibold text-txt-subtle">{s.id}</td>
+                      <td className="py-4 px-6 font-mono text-xs font-semibold text-txt-subtle">{s.controlNumber || s.id}</td>
                       <td className="py-4 px-6">
                         <button
                           type="button"

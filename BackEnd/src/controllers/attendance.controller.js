@@ -344,6 +344,8 @@ export const getGroupStudents = async (req, res) => {
       SELECT 
         u.usuario_id AS id,
         u.nombre_completo AS name,
+        u.correo AS email,
+        pa.matricula AS matricula,
         ISNULL(
           (
             SELECT CAST(100.0 * SUM(CASE WHEN ra.estatus = 'asistio' THEN 1 ELSE 0 END) / NULLIF(COUNT(sa.sesion_id), 0) AS INT)
@@ -354,17 +356,29 @@ export const getGroupStudents = async (req, res) => {
         ) AS attendanceRate
       FROM dbo.Inscripciones i
       JOIN dbo.Usuarios u ON i.alumno_id = u.usuario_id
+      LEFT JOIN dbo.PerfilesAlumnos pa ON pa.usuario_id = u.usuario_id
       WHERE i.asignacion_id = @groupId AND u.activo = 1
       ORDER BY u.nombre_completo;
     `, [
       { name: "groupId", type: sql.Int, value: parseInt(groupId) }
     ]);
 
-    const mapped = result.recordset.map(s => ({
-      id: s.id.toString(),
-      name: s.name,
-      attendanceRate: s.attendanceRate
-    }));
+    const mapped = result.recordset.map(s => {
+      let controlNumber = s.matricula;
+      if (!controlNumber && s.email) {
+        const parts = s.email.split('@');
+        controlNumber = parts[0];
+      }
+      if (!controlNumber) {
+        controlNumber = s.id.toString();
+      }
+      return {
+        id: s.id.toString(),
+        controlNumber,
+        name: s.name,
+        attendanceRate: s.attendanceRate
+      };
+    });
 
     return res.json(mapped);
   } catch (error) {

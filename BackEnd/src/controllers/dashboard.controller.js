@@ -200,6 +200,7 @@ SELECT
   u.usuario_id AS id,
   u.nombre_completo AS name,
   pa.matricula AS matricula,
+  u.correo AS email,
   CASE 
     WHEN ad.periodo_id IS NOT NULL AND EXISTS (
       SELECT 1 FROM dbo.PeriodosEscolares PE 
@@ -693,7 +694,25 @@ export const getTeacherOverview = async (req, res) => {
       grupos: groupsResult.recordset,
       series: seriesResult.recordset,
       cumplimiento: sessionsResult.recordset,
-      alumnosEnRiesgo: riskStudentsResult.recordset,
+      alumnosEnRiesgo: riskStudentsResult.recordset.map(s => {
+        let controlNumber = s.matricula;
+        if (!controlNumber && s.email) {
+          const parts = s.email.split('@');
+          controlNumber = parts[0];
+        }
+        if (!controlNumber) {
+          controlNumber = s.id.toString();
+        }
+        return {
+          id: s.id.toString(),
+          name: s.name,
+          controlNumber,
+          course: s.course,
+          groupKey: s.groupKey,
+          rate: s.rate,
+          status: s.status
+        };
+      }),
     });
   } catch (error) {
     console.error("Error teacher overview:", error);
