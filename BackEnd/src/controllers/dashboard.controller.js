@@ -420,7 +420,7 @@ const buildPredictions = (rows = []) => {
 };
 
 export const getAdminSummary = async (req, res) => {
-  const { busqueda = null, turno = null, from, to, granularity } = req.query;
+  const { busqueda = null, turno = null, from, to, granularity, ciclo = null } = req.query;
   const normalizedGranularity =
     granularity === "daily" || granularity === "weekly" ? "daily" : "monthly";
 
@@ -451,10 +451,21 @@ export const getAdminSummary = async (req, res) => {
       : ADMIN_SERIES_QUERY_MONTHLY;
 
   try {
-    const activePeriodResult = await runQuery(`
-      SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
-    `);
-    const activePeriod = activePeriodResult.recordset[0];
+    let activePeriod = null;
+    if (ciclo) {
+      const periodResult = await runQuery(`
+        SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE clave = @ciclo
+      `, [{ name: "ciclo", type: sql.VarChar, value: ciclo }]);
+      if (periodResult.recordset.length > 0) {
+        activePeriod = periodResult.recordset[0];
+      }
+    }
+    if (!activePeriod) {
+      const activePeriodResult = await runQuery(`
+        SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
+      `);
+      activePeriod = activePeriodResult.recordset[0];
+    }
     const periodoId = activePeriod?.periodo_id || null;
     const isInter = activePeriod?.nombre?.toLowerCase().includes("intersemestral") ? 1 : 0;
 

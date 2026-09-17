@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api, getSchoolCycle } from '../../services/api';
+import { api, getSchoolCycle, getRealSchoolCycle, isPastSchoolCycle } from '../../services/api';
 import { useTheme } from '../../context/ThemeContext';
 import ThemeToggle from '../ThemeToggle';
 import DesersionTab from '../DesersionTab';
 import JustificantesTab from '../JustificantesTab';
+import GruposTab from '../GruposTab';
 import rhinoMascot from '../../assets/rhino_mascot.png';
 import rinoasistBanner from '../../assets/rinoasist_banner.png';
 import rinoasistBannerDark from '../../assets/rinoasist_banner_dark.png';
@@ -18,7 +19,7 @@ import {
   LogOut, Calendar, Users, QrCode, 
   TrendingUp, AlertTriangle, RefreshCw, 
   ShieldAlert, UserCheck, Layers, ChevronDown, FileText, Download, Mail, BookOpen, Trash2, UserX,
-  Clock, CheckCircle2, CheckCircle, Edit, Lock, Unlock, CalendarRange, UploadCloud, FileSpreadsheet
+  Clock, CheckCircle2, CheckCircle, Edit, Lock, Unlock, CalendarRange, UploadCloud, FileSpreadsheet, ArrowRight
 } from 'lucide-react';
 
 const CustomTooltip = ({ active, payload, label }) => {
@@ -93,6 +94,7 @@ export default function AdminDashboard({ user }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState('resumen');
+  const mainContentRef = useRef(null);
   const [selectedWeek, setSelectedWeek] = useState('w1');
   const [expandedSemesters, setExpandedSemesters] = useState({});
 
@@ -126,6 +128,7 @@ export default function AdminDashboard({ user }) {
   };
 
   const isIntersemestral = getCycleSafeStr().toUpperCase().includes("INTER");
+  const isPastCycle = isPastSchoolCycle(getSchoolCycle());
 
 
   const getAvailableCycles = (currentClave) => {
@@ -212,7 +215,7 @@ export default function AdminDashboard({ user }) {
       const summaryData = await api.getAdminSummary();
       setAdminData(summaryData);
       if (adminSelectedTeacherId) {
-        const details = await api.getTeacherOverview(null, adminSelectedTeacherId);
+        const details = await api.getTeacherOverview(adminSelectedTeacherId, selectedWeek, getSchoolCycle());
         setAdminTeacherDetail(details);
       }
     } catch (err) {
@@ -377,6 +380,7 @@ export default function AdminDashboard({ user }) {
   const handleCycleChange = async (cycleClave) => {
     try {
       setLoading(true);
+      localStorage.setItem('selected_school_cycle', cycleClave);
       await api.setActivePeriodoByClave(cycleClave);
       window.location.reload();
     } catch (err) {
@@ -3058,6 +3062,12 @@ export default function AdminDashboard({ user }) {
   };
 
   useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, behavior: 'instant' });
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
     if (!loading && activeTab === 'alumnos') {
       loadAlumnosOverviewData();
     }
@@ -3226,6 +3236,24 @@ export default function AdminDashboard({ user }) {
             {!isIntersemestral && (
               <button 
                 onClick={() => {
+                  setActiveTab('grupos');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full text-left py-2.5 px-3 rounded-xl flex items-center font-semibold text-sm cursor-pointer transition-all ${
+                  activeTab === 'grupos'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
+                    : 'hover:bg-bg-base/40 text-txt-muted hover:text-brand-primary border border-transparent'
+                } ${isSidebarCollapsed ? 'justify-center' : 'justify-start'}`}
+              >
+                <Layers className="w-4 h-4 shrink-0" />
+                <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
+                  Grupos
+                </span>
+              </button>
+            )}
+            {!isIntersemestral && (
+              <button 
+                onClick={() => {
                   setActiveTab('desersion');
                   setIsMobileMenuOpen(false);
                 }}
@@ -3274,7 +3302,7 @@ export default function AdminDashboard({ user }) {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-grow p-6 md:p-10 space-y-8 overflow-y-auto">
+      <main ref={mainContentRef} className="flex-grow p-6 md:p-10 space-y-8 overflow-y-auto">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 pb-6 border-b border-bdr-base theme-transition">
           <div>
             <h2 className="text-3xl font-extrabold tracking-tight">Panel de Control</h2>
@@ -3290,33 +3318,63 @@ export default function AdminDashboard({ user }) {
             <div className="relative">
               <button 
                 onClick={() => setIsCycleDropdownOpen(!isCycleDropdownOpen)}
-                className="flex items-center gap-2.5 bg-bg-surface border border-bdr-base px-4 py-2 rounded-xl text-sm font-semibold text-txt-muted hover:text-brand-primary hover:border-brand-primary/30 theme-transition cursor-pointer"
+                className={`flex items-center gap-2.5 border px-4 py-2 rounded-xl text-sm font-semibold theme-transition cursor-pointer ${
+                  isPastCycle
+                    ? 'bg-amber-500/10 border-amber-500/40 text-amber-400 hover:bg-amber-500/20'
+                    : 'bg-bg-surface border-bdr-base text-txt-muted hover:text-brand-primary hover:border-brand-primary/30'
+                }`}
               >
-                <Layers className="w-4 h-4 text-brand-primary" />
+                {isPastCycle ? (
+                  <Lock className="w-4 h-4 text-amber-400" />
+                ) : (
+                  <Layers className="w-4 h-4 text-brand-primary" />
+                )}
                 <span>Ciclo: {getSchoolCycle()}</span>
+                {isPastCycle && (
+                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                    Solo Lectura
+                  </span>
+                )}
                 <ChevronDown className="w-3.5 h-3.5 text-txt-muted" />
               </button>
               
               {isCycleDropdownOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setIsCycleDropdownOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-48 bg-bg-card border border-bdr-base rounded-xl shadow-xl z-20 py-1.5 max-h-60 overflow-y-auto theme-transition text-left">
-                    {schoolCyclesList.map((cycle) => (
-                      <button
-                        key={cycle}
-                        onClick={() => {
-                          handleCycleChange(cycle);
-                          setIsCycleDropdownOpen(false);
-                        }}
-                        className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors ${
-                          getSchoolCycle() === cycle 
-                            ? 'text-brand-primary bg-brand-primary/10' 
-                            : 'text-txt-subtle hover:text-txt-base hover:bg-bg-surface'
-                        }`}
-                      >
-                        {cycle}
-                      </button>
-                    ))}
+                  <div className="absolute right-0 mt-2 w-56 bg-bg-card border border-bdr-base rounded-xl shadow-xl z-20 py-1.5 max-h-60 overflow-y-auto theme-transition text-left">
+                    {schoolCyclesList.map((cycle) => {
+                      const isPast = isPastSchoolCycle(cycle);
+                      const isCurrent = cycle === getRealSchoolCycle();
+                      return (
+                        <button
+                          key={cycle}
+                          onClick={() => {
+                            handleCycleChange(cycle);
+                            setIsCycleDropdownOpen(false);
+                          }}
+                          className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors flex items-center justify-between gap-2 ${
+                            getSchoolCycle() === cycle 
+                              ? 'text-brand-primary bg-brand-primary/10' 
+                              : 'text-txt-subtle hover:text-txt-base hover:bg-bg-surface'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5">
+                            {isPast && <Lock className="w-3 h-3 text-amber-400/80 shrink-0" />}
+                            {cycle}
+                          </span>
+                          {isCurrent && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/20">
+                              Actual
+                            </span>
+                          )}
+                          {isPast && !isCurrent && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300/90 font-medium border border-amber-500/20">
+                              Concluido
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
                 </>
               )}
@@ -3328,33 +3386,64 @@ export default function AdminDashboard({ user }) {
           </div>
         </div>
 
-        {/* Welcome Header Card */}
-        <div className="bg-bg-card border border-bdr-base p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 theme-transition text-left relative overflow-hidden mb-8">
-          <div className={`absolute -inset-[1px] bg-gradient-to-r from-brand-primary/10 to-blue-500/10 rounded-3xl -z-10`}></div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4.5 flex-grow">
-            <div className="relative shrink-0">
-              <div className="absolute -inset-1 bg-gradient-to-tr from-brand-primary to-blue-500 rounded-full blur opacity-25 animate-pulse"></div>
-              <img 
-                src={roleAdmin} 
-                alt="Role Icon" 
-                className="relative w-20 h-20 object-contain drop-shadow-md" 
-              />
+        {/* Warning Visual para Ciclos Concluidos (Modo Solo Lectura) */}
+        {isPastCycle && (
+          <div className="mb-6 p-4.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4 text-amber-200 backdrop-blur-md shadow-lg animate-fade-in text-left">
+            <div className="flex items-start md:items-center gap-3.5">
+              <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 shrink-0 border border-amber-500/30">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 font-bold text-amber-100 text-sm">
+                  <span>Ciclo Escolar Concluido ({getSchoolCycle()})</span>
+                  <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                    Modo Solo Lectura
+                  </span>
+                </div>
+                <p className="text-xs text-amber-200/80 mt-1 leading-relaxed">
+                  Estás consultando un ciclo escolar anterior que ya ha terminado. Los datos se presentan únicamente con fines de consulta histórica. Todas las acciones de edición, asignación y eliminación se encuentran deshabilitadas.
+                </p>
+              </div>
             </div>
-            <div className="space-y-1">
-              <h3 className="text-xl font-bold">¡Hola de nuevo, {user.name.split(' ')[0]}!</h3>
-              <p className="text-sm text-txt-muted max-w-md leading-relaxed">
-                Aquí tienes un resumen global del rendimiento de asistencia de la institución.
-              </p>
-            </div>
+            <button
+              onClick={() => handleCycleChange(getRealSchoolCycle())}
+              className="px-4 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-100 border border-amber-500/40 text-xs font-bold flex items-center justify-center gap-2 transition-all shrink-0 cursor-pointer shadow-sm hover:scale-[1.02]"
+            >
+              <span>Volver al ciclo actual ({getRealSchoolCycle()})</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
+        )}
 
-          <div className="flex items-center gap-3 bg-bg-surface/50 border border-bdr-base/60 p-3.5 rounded-2xl max-w-sm w-full lg:w-96 theme-transition hover:border-brand-primary/30 relative">
-            <img src={rhinoMascot} alt="Rino" className="w-14 h-14 object-contain shrink-0 drop-shadow-md animate-pulse" />
-            <div className="text-[11px] leading-relaxed font-semibold text-txt-muted text-left flex-grow">
-              {getMascotMessage()}
+        {/* Welcome Header Card (Only on resumen tab) */}
+        {activeTab === 'resumen' && (
+          <div className="bg-bg-card border border-bdr-base p-6 rounded-3xl shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 theme-transition text-left relative overflow-hidden mb-8">
+            <div className={`absolute -inset-[1px] bg-gradient-to-r from-brand-primary/10 to-blue-500/10 rounded-3xl -z-10`}></div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4.5 flex-grow">
+              <div className="relative shrink-0">
+                <div className="absolute -inset-1 bg-gradient-to-tr from-brand-primary to-blue-500 rounded-full blur opacity-25 animate-pulse"></div>
+                <img 
+                  src={roleAdmin} 
+                  alt="Role Icon" 
+                  className="relative w-20 h-20 object-contain drop-shadow-md" 
+                />
+              </div>
+              <div className="space-y-1">
+                <h3 className="text-xl font-bold">¡Hola de nuevo, {user.name.split(' ')[0]}!</h3>
+                <p className="text-sm text-txt-muted max-w-md leading-relaxed">
+                  Aquí tienes un resumen global del rendimiento de asistencia de la institución.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 bg-bg-surface/50 border border-bdr-base/60 p-3.5 rounded-2xl max-w-sm w-full lg:w-96 theme-transition hover:border-brand-primary/30 relative">
+              <img src={rhinoMascot} alt="Rino" className="w-14 h-14 object-contain shrink-0 drop-shadow-md animate-pulse" />
+              <div className="text-[11px] leading-relaxed font-semibold text-txt-muted text-left flex-grow">
+                {getMascotMessage()}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* RENDER VIEWS */}
         <div className="space-y-8 animate-fadeIn">
@@ -3411,36 +3500,40 @@ export default function AdminDashboard({ user }) {
                         >
                           <span>+ Grupo Temporal</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setAdminSelectedTeacherId('');
-                            setAdminTeacherDetail(null);
-                            setSelectedDocenteIdForGroup('');
-                            await handleAssignClassClick();
-                          }}
-                          className="text-brand-primary hover:text-brand-hover text-[10px] font-bold uppercase bg-brand-primary/10 border border-brand-primary/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
-                          title="Asignar una nueva materia y grupo a un docente"
-                        >
-                          Asignar Clase
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsImportModalOpen(true)}
-                          className="text-brand-primary hover:text-brand-hover text-[10px] font-bold uppercase bg-brand-primary/10 border border-brand-primary/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
-                          title="Cargar horarios"
-                        >
-                          Cargar Excel
-                        </button>
-                        {interClasses.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={handleClearAllInterClasses}
-                            className="text-rose-500 hover:text-rose-600 text-[10px] font-bold uppercase bg-rose-500/10 border border-rose-500/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
-                            title="Eliminar todos los horarios cargados"
-                          >
-                            Vaciar Todo
-                          </button>
+                        {!isPastCycle && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                setAdminSelectedTeacherId('');
+                                setAdminTeacherDetail(null);
+                                setSelectedDocenteIdForGroup('');
+                                await handleAssignClassClick();
+                              }}
+                              className="text-brand-primary hover:text-brand-hover text-[10px] font-bold uppercase bg-brand-primary/10 border border-brand-primary/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                              title="Asignar una nueva materia y grupo a un docente"
+                            >
+                              Asignar Clase
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setIsImportModalOpen(true)}
+                              className="text-brand-primary hover:text-brand-hover text-[10px] font-bold uppercase bg-brand-primary/10 border border-brand-primary/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                              title="Cargar horarios"
+                            >
+                              Cargar Excel
+                            </button>
+                            {interClasses.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={handleClearAllInterClasses}
+                                className="text-rose-500 hover:text-rose-600 text-[10px] font-bold uppercase bg-rose-500/10 border border-rose-500/15 px-2.5 py-1.5 rounded-lg cursor-pointer transition-colors"
+                                title="Eliminar todos los horarios cargados"
+                              >
+                                Vaciar Todo
+                              </button>
+                            )}
+                          </>
                         )}
                         <span className="text-[10px] font-bold text-txt-muted uppercase bg-bg-surface px-2 py-1 rounded-md border border-bdr-base">
                           {interClasses.length} clases
@@ -3760,16 +3853,19 @@ export default function AdminDashboard({ user }) {
                   </div>
                 </div>
 
-                <div className="bg-bg-card border border-bdr-base p-5 rounded-2xl shadow-sm theme-transition">
+                <div 
+                  onClick={() => setActiveTab('grupos')}
+                  className="bg-bg-card border border-bdr-base hover:border-brand-primary/40 p-5 rounded-2xl shadow-sm theme-transition cursor-pointer group"
+                >
                   <div className="flex justify-between items-start mb-3">
-                    <span className="text-xs font-bold text-txt-subtle uppercase tracking-wider">Grupos Activos</span>
-                    <div className="bg-brand-primary/10 text-brand-primary p-1.5 rounded-lg border border-brand-primary/10">
+                    <span className="text-xs font-bold text-txt-subtle uppercase tracking-wider group-hover:text-brand-primary transition-colors">Grupos Activos</span>
+                    <div className="bg-brand-primary/10 text-brand-primary p-1.5 rounded-lg border border-brand-primary/10 group-hover:scale-105 transition-transform">
                       <Layers className="w-4 h-4" />
                     </div>
                   </div>
                   <div className="text-3xl font-extrabold text-txt-base">{adminData.kpis.activeGroups}</div>
-                  <div className="text-[10px] text-txt-subtle font-semibold mt-1.5">
-                    Conexión directa a BD
+                  <div className="text-[10px] text-brand-primary font-semibold mt-1.5 flex items-center gap-1">
+                    <span>Gestionar grupos &rarr;</span>
                   </div>
                 </div>
 
@@ -4198,20 +4294,29 @@ export default function AdminDashboard({ user }) {
                     <span className="text-xs font-semibold text-txt-muted">{displayedDocentes.length || 0} profesores en carrera</span>
                   </div>
                   <div className="flex gap-2 w-full sm:w-auto">
-                    <button 
-                      onClick={() => setIsImportModalOpen(true)}
-                      className="bg-bg-surface border border-bdr-base hover:border-brand-primary/30 text-txt-base hover:text-brand-primary font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-sm hover:scale-[1.02] transition-all cursor-pointer theme-transition"
-                    >
-                      <FileSpreadsheet className="w-4 h-4 text-brand-primary" />
-                      <span>Cargar Horarios</span>
-                    </button>
-                    <button 
-                      onClick={handleCreateTeacherClick} 
-                      className="bg-brand-primary hover:bg-brand-hover text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-md hover:scale-[1.02] transition-all cursor-pointer theme-transition"
-                    >
-                      <Users className="w-4 h-4" />
-                      <span>Registrar Docente</span>
-                    </button>
+                    {!isPastCycle ? (
+                      <>
+                        <button 
+                          onClick={() => setIsImportModalOpen(true)}
+                          className="bg-bg-surface border border-bdr-base hover:border-brand-primary/30 text-txt-base hover:text-brand-primary font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-sm hover:scale-[1.02] transition-all cursor-pointer theme-transition"
+                        >
+                          <FileSpreadsheet className="w-4 h-4 text-brand-primary" />
+                          <span>Cargar Horarios</span>
+                        </button>
+                        <button 
+                          onClick={handleCreateTeacherClick} 
+                          className="bg-brand-primary hover:bg-brand-hover text-white font-bold py-2 px-4 rounded-xl text-xs flex items-center gap-1.5 shadow-md hover:scale-[1.02] transition-all cursor-pointer theme-transition"
+                        >
+                          <Users className="w-4 h-4" />
+                          <span>Registrar Docente</span>
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-xs font-bold text-amber-400 bg-amber-500/10 border border-amber-500/25 px-3 py-2 rounded-xl flex items-center gap-1.5">
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Solo Lectura</span>
+                      </span>
+                    )}
                   </div>
                 </div>
                 
@@ -4469,12 +4574,15 @@ export default function AdminDashboard({ user }) {
                                       <span className="text-base font-extrabold text-emerald-500 block leading-none">{grupo.asistencia_promedio}%</span>
                                     </div>
                                     
-                                    <button 
-                                      onClick={() => handleUnassignClass(grupo.id, grupo.name)}
-                                      className="p-2 border border-bdr-base text-txt-subtle hover:text-rose-500 hover:border-rose-500/30 hover:bg-rose-500/5 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center shadow-sm hover:scale-105"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
+                                    {!isPastCycle && (
+                                      <button 
+                                        onClick={() => handleUnassignClass(grupo.id, grupo.name)}
+                                        className="p-2 border border-bdr-base text-txt-subtle hover:text-rose-500 hover:border-rose-500/30 hover:bg-rose-500/5 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center shadow-sm hover:scale-105"
+                                        title="Desvincular materia"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </button>
+                                    )}
                                   </div>
                                 </div>
                               ))}
@@ -4491,7 +4599,12 @@ export default function AdminDashboard({ user }) {
                                 <h4 className="font-extrabold text-lg">Distribución de Horario Semanal</h4>
                                 <p className="text-xs text-txt-muted mt-0.5">Visualización y edición interactiva de la agenda de clases del docente.</p>
                               </div>
-                              {isEditingSchedule ? (
+                              {isPastCycle ? (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30 select-none">
+                                  <Lock className="w-3.5 h-3.5" />
+                                  Solo Lectura (Ciclo Cerrado)
+                                </span>
+                              ) : isEditingSchedule ? (
                                 <div className="flex items-center gap-2 select-none">
                                   <button
                                     type="button"
@@ -4787,13 +4900,20 @@ export default function AdminDashboard({ user }) {
                           <div className="bg-bg-card border border-bdr-base p-6 rounded-2xl shadow-sm space-y-4 theme-transition text-left">
                             <h4 className="font-extrabold text-lg">Acciones Rápidas de Control</h4>
                             <div className="flex flex-col gap-2.5">
-                              <button
-                                onClick={handleAssignClassClick}
-                                className="w-full py-2.5 px-4 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
-                              >
-                                <BookOpen className="w-4 h-4" />
-                                Asignar Nueva Asignatura
-                              </button>
+                              {!isPastCycle ? (
+                                <button
+                                  onClick={handleAssignClassClick}
+                                  className="w-full py-2.5 px-4 bg-brand-primary hover:bg-brand-hover text-white text-xs font-bold rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+                                >
+                                  <BookOpen className="w-4 h-4" />
+                                  Asignar Nueva Asignatura
+                                </button>
+                              ) : (
+                                <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-2">
+                                  <Lock className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Ciclo en modo solo lectura</span>
+                                </div>
+                              )}
                               <button 
                                 onClick={handleEditTeacherClick}
                                 className="w-full py-2.5 px-4 bg-bg-surface border border-bdr-base hover:border-brand-primary/45 text-txt-base hover:text-brand-primary text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2"
@@ -4822,13 +4942,15 @@ export default function AdminDashboard({ user }) {
                                   Excel XLS
                                 </button>
                               </div>
-                              <button 
-                                onClick={() => handleDeleteTeacher(adminSelectedTeacherId, adminTeacherDetail.name)}
-                                className="w-full py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 hover:text-rose-700 border border-rose-500/20 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                Dar de Baja Docente
-                              </button>
+                              {!isPastCycle && (
+                                <button 
+                                  onClick={() => handleDeleteTeacher(adminSelectedTeacherId, adminTeacherDetail.name)}
+                                  className="w-full py-2.5 px-4 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 hover:text-rose-700 border border-rose-500/20 text-xs font-bold rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Dar de Baja Docente
+                                </button>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -4974,23 +5096,30 @@ export default function AdminDashboard({ user }) {
                         </div>
                       )}
 
-                      <button
-                        type="submit"
-                        disabled={sendingInvite || !selectedGroupIdForInvite || !inviteStudentEmail}
-                        className="w-full bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md select-none"
-                      >
-                        {sendingInvite ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            <span>Enviando...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Mail className="w-4 h-4" />
-                            <span>Enviar Invitación</span>
-                          </>
-                        )}
-                      </button>
+                      {isPastCycle ? (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-2">
+                          <Lock className="w-4 h-4 shrink-0" />
+                          <span>Ciclo cerrado (solo lectura). No se pueden enviar invitaciones.</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="submit"
+                          disabled={sendingInvite || !selectedGroupIdForInvite || !inviteStudentEmail}
+                          className="w-full bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md select-none"
+                        >
+                          {sendingInvite ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              <span>Enviando...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Mail className="w-4 h-4" />
+                              <span>Enviar Invitación</span>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </form>
                   </div>
 
@@ -5077,24 +5206,28 @@ export default function AdminDashboard({ user }) {
                                     </span>
                                   </td>
                                   <td className="py-3.5 px-4 text-center">
-                                    <div className="flex items-center justify-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => handleEditAlumnoClick(al)}
-                                        className="p-1 text-txt-muted hover:text-brand-primary rounded-lg hover:bg-brand-primary/10 transition-all cursor-pointer"
-                                        title="Editar alumno"
-                                      >
-                                        <Edit className="w-4.5 h-4.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => handleDeleteAlumno(al.id, al.nombre)}
-                                        className="p-1 text-txt-muted hover:text-rose-500 rounded-lg hover:bg-rose-500/10 transition-all cursor-pointer"
-                                        title="Dar de baja alumno"
-                                      >
-                                        <UserX className="w-4.5 h-4.5" />
-                                      </button>
-                                    </div>
+                                    {!isPastCycle ? (
+                                      <div className="flex items-center justify-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleEditAlumnoClick(al)}
+                                          className="p-1 text-txt-muted hover:text-brand-primary rounded-lg hover:bg-brand-primary/10 transition-all cursor-pointer"
+                                          title="Editar alumno"
+                                        >
+                                          <Edit className="w-4.5 h-4.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeleteAlumno(al.id, al.nombre)}
+                                          className="p-1 text-txt-muted hover:text-rose-500 rounded-lg hover:bg-rose-500/10 transition-all cursor-pointer"
+                                          title="Dar de baja alumno"
+                                        >
+                                          <UserX className="w-4.5 h-4.5" />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <span className="text-txt-muted/30 text-xs">-</span>
+                                    )}
                                   </td>
                                 </tr>
                               ))
@@ -5208,7 +5341,7 @@ export default function AdminDashboard({ user }) {
                                       </span>
                                     </td>
                                     <td className="py-3.5 px-4 text-center">
-                                      {inv.estatus.toLowerCase() !== 'aceptada' && (
+                                      {!isPastCycle && inv.estatus.toLowerCase() !== 'aceptada' ? (
                                         <button
                                           type="button"
                                           onClick={() => handleDeleteInvitation(inv.id, inv.correo)}
@@ -5217,6 +5350,8 @@ export default function AdminDashboard({ user }) {
                                         >
                                           <Trash2 className="w-4.5 h-4.5" />
                                         </button>
+                                      ) : (
+                                        <span className="text-txt-muted/30 text-xs">-</span>
                                       )}
                                     </td>
                                   </tr>
@@ -5519,23 +5654,30 @@ export default function AdminDashboard({ user }) {
                         </div>
                       )}
 
-                      <button
-                        type="submit"
-                        disabled={savingGroupAssignment || !selectedGroupIdForMateria || !selectedMateriaIdForGroup || !selectedDocenteIdForGroup || !groupAssignmentSchedule}
-                        className="w-full bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md select-none animate-pulse-subtle"
-                      >
-                        {savingGroupAssignment ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                            <span>Guardando...</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Asignar Asignatura</span>
-                          </>
-                        )}
-                      </button>
+                      {isPastCycle ? (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-2">
+                          <Lock className="w-4 h-4 shrink-0" />
+                          <span>Ciclo cerrado (solo lectura). No se pueden asignar materias.</span>
+                        </div>
+                      ) : (
+                        <button
+                          type="submit"
+                          disabled={savingGroupAssignment || !selectedGroupIdForMateria || !selectedMateriaIdForGroup || !selectedDocenteIdForGroup || !groupAssignmentSchedule}
+                          className="w-full bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md select-none animate-pulse-subtle"
+                        >
+                          {savingGroupAssignment ? (
+                            <>
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                              <span>Guardando...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Asignar Asignatura</span>
+                            </>
+                          )}
+                        </button>
+                      )}
                     </form>
                   </div>
 
@@ -5620,12 +5762,17 @@ export default function AdminDashboard({ user }) {
                                 <td className="py-3.5 px-4 text-txt-subtle">{asg.docente_nombre}</td>
                                 <td className="py-3.5 px-4 text-txt-muted font-semibold">{asg.horario || 'Sin horario'}</td>
                                 <td className="py-3.5 px-4 text-center">
-                                  <button
-                                    onClick={() => handleDeleteGroupAssignment(asg.id, asg.materia_nombre, asg.grupo_clave)}
-                                    className="p-1.5 hover:bg-rose-500/10 text-txt-muted hover:text-rose-500 rounded-lg transition-all cursor-pointer"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
+                                  {!isPastCycle ? (
+                                    <button
+                                      onClick={() => handleDeleteGroupAssignment(asg.id, asg.materia_nombre, asg.grupo_clave)}
+                                      className="p-1.5 hover:bg-rose-500/10 text-txt-muted hover:text-rose-500 rounded-lg transition-all cursor-pointer"
+                                      title="Eliminar asignación"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  ) : (
+                                    <span className="text-txt-muted/30 text-xs">-</span>
+                                  )}
                                 </td>
                               </tr>
                             ))
@@ -5715,6 +5862,22 @@ export default function AdminDashboard({ user }) {
                 </div>
               )}
             </div>
+          )}
+
+          {activeTab === 'grupos' && (
+            <GruposTab 
+              assignmentOptions={assignmentOptions}
+              isPastCycle={isPastCycle}
+              onRefreshOptions={async () => {
+                try {
+                  const options = await api.getAssignmentOptions();
+                  setAssignmentOptions(options);
+                  await fetchAdminDashboardData();
+                } catch (e) {
+                  console.error('Error refreshing options:', e);
+                }
+              }}
+            />
           )}
 
           {activeTab === 'desersion' && (

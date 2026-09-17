@@ -1,11 +1,19 @@
 import { runQuery, sql, getPool } from "../config/db.js";
 
 export const getAlumnosOverview = async (req, res) => {
+  const { ciclo = null } = req.query;
   try {
-    const activePeriodResult = await runQuery(`
-      SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
-    `);
-    const activePeriod = activePeriodResult.recordset[0];
+    let activePeriod = null;
+    if (ciclo) {
+      const pRes = await runQuery("SELECT TOP 1 periodo_id, clave, nombre FROM dbo.PeriodosEscolares WHERE clave = @ciclo", [{ name: "ciclo", type: sql.VarChar, value: ciclo }]);
+      if (pRes.recordset.length > 0) activePeriod = pRes.recordset[0];
+    }
+    if (!activePeriod) {
+      const activePeriodResult = await runQuery(`
+        SELECT TOP 1 periodo_id, clave, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
+      `);
+      activePeriod = activePeriodResult.recordset[0];
+    }
     const activePeriodId = activePeriod?.periodo_id;
 
     const allPeriodsResult = await runQuery(`

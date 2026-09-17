@@ -59,6 +59,32 @@ OUTPUT INSERTED.asignacion_id
 VALUES (@docenteId, @materiaId, @grupoId, @horario, @activePeriodId);
 `;
 
+/**
+ * Returns true if the active school period is past / closed (read-only)
+ */
+async function isPeriodClosed(targetPeriodId = null) {
+  try {
+    let pRes;
+    if (targetPeriodId) {
+      pRes = await runQuery("SELECT periodo_id, fecha_fin, activo FROM dbo.PeriodosEscolares WHERE periodo_id = @id", [
+        { name: "id", type: sql.Int, value: targetPeriodId }
+      ]);
+    } else {
+      pRes = await runQuery("SELECT TOP 1 periodo_id, fecha_fin, activo FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC");
+    }
+    if (!pRes.recordset || pRes.recordset.length === 0) return false;
+    const period = pRes.recordset[0];
+    if (period.activo === false || period.activo === 0) return true;
+    if (period.fecha_fin && new Date(period.fecha_fin) < new Date()) {
+      return true;
+    }
+    return false;
+  } catch (err) {
+    console.error("Error checking isPeriodClosed:", err);
+    return false;
+  }
+}
+
 export const getAssignmentOptions = async (req, res) => {
   try {
     // Ensure Intersemestral subject exists
@@ -130,6 +156,12 @@ export const createAssignment = async (req, res) => {
   }
 
   try {
+    if (await isPeriodClosed()) {
+      return res.status(403).json({
+        message: "El ciclo escolar activo ha concluido o está en modo solo lectura. No se permiten nuevas asignaciones."
+      });
+    }
+
     const existing = await runQuery(CHECK_ASSIGNMENT, [
       { name: "docenteId", type: sql.Int, value: docenteId },
       { name: "materiaId", type: sql.Int, value: materiaId },
@@ -192,6 +224,19 @@ export const deleteAssignment = async (req, res) => {
 
   try {
     const asignacionId = parseInt(id);
+
+    // Verify assignment period is not closed
+    const asgCheck = await runQuery("SELECT periodo_id FROM dbo.AsignacionesDocentes WHERE asignacion_id = @id", [
+      { name: "id", type: sql.Int, value: asignacionId }
+    ]);
+    if (asgCheck.recordset.length > 0) {
+      const pId = asgCheck.recordset[0].periodo_id;
+      if (await isPeriodClosed(pId)) {
+        return res.status(403).json({
+          message: "No se puede eliminar la asignación de un ciclo escolar concluido (modo solo lectura)."
+        });
+      }
+    }
 
     // 1. Delete RegistrosAsistencia for the sessions of this assignment
     await runQuery(`
@@ -442,6 +487,12 @@ export const importAssignments = async (req, res) => {
   }
 
   try {
+    if (await isPeriodClosed(parseInt(periodoId))) {
+      return res.status(403).json({
+        message: "No se puede importar horarios en un ciclo escolar concluido (modo solo lectura)."
+      });
+    }
+
     const pool = await getPool();
 
     // Check if period is intersemestral
@@ -983,6 +1034,12 @@ export const createGroup = async (req, res) => {
   }
 
   try {
+    if (await isPeriodClosed()) {
+      return res.status(403).json({
+        message: "El ciclo escolar activo ha concluido o está en modo solo lectura. No se permite crear grupos."
+      });
+    }
+
     const activePeriodResult = await runQuery(`
       SELECT TOP 1 periodo_id FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
     `);
@@ -1009,15 +1066,27 @@ export const createGroup = async (req, res) => {
       });
     }
 
+    let parsedCarreraId = req.body.carrera_id ? parseInt(req.body.carrera_id) : null;
+    if (!parsedCarreraId && req.body.carreraId) {
+      parsedCarreraId = parseInt(req.body.carreraId);
+    }
+    if (!parsedCarreraId) {
+      const careerRes = await runQuery(
+        "SELECT TOP 1 carrera_id FROM dbo.Carreras WHERE clave = 'ISC' ORDER BY carrera_id ASC"
+      );
+      parsedCarreraId = careerRes.recordset[0]?.carrera_id || null;
+    }
+
     const result = await runQuery(`
-      INSERT INTO dbo.Grupos (clave, semestre, turno, cupo, periodo_id)
+      INSERT INTO dbo.Grupos (clave, semestre, turno, cupo, carrera_id, periodo_id)
       OUTPUT INSERTED.grupo_id
-      VALUES (@clave, @semestre, @turno, @cupo, @periodoId);
+      VALUES (@clave, @semestre, @turno, @cupo, @carreraId, @periodoId);
     `, [
       { name: "clave", type: sql.VarChar, value: clave },
       { name: "turno", type: sql.VarChar, value: turno },
       { name: "cupo", type: sql.Int, value: parseInt(cupo) },
       { name: "semestre", type: sql.TinyInt, value: parseInt(semestre) },
+      { name: "carreraId", type: sql.Int, value: parsedCarreraId },
       { name: "periodoId", type: sql.Int, value: activePeriodId },
     ]);
 
@@ -1029,10 +1098,413 @@ export const createGroup = async (req, res) => {
       semestre,
       turno,
       cupo,
+      carrera_id: parsedCarreraId,
     });
   } catch (error) {
     console.error("Error creating group:", error);
-    return res.status(500).json({ message: "Error al crear el grupo temporal" });
+    return res.status(500).json({ message: "Error al crear el grupo" });
+  }
+};
+
+function getSemesterGroupKeyForSemester(oldKey, targetSemester) {
+  const match = oldKey.match(/\d+/);
+  if (!match) return oldKey;
+  const digits = match[0];
+  if (digits.length < 2) return oldKey;
+  const semIndex = digits.length - 2;
+  const nextDigits = digits.substring(0, semIndex) + targetSemester + digits.substring(semIndex + 1);
+  return oldKey.replace(digits, nextDigits);
+}
+
+async function resolveStudentsByGroupForCycle(targetCiclo) {
+  let activePeriod = null;
+  if (targetCiclo) {
+    const pRes = await runQuery(
+      "SELECT TOP 1 periodo_id, clave, nombre FROM dbo.PeriodosEscolares WHERE clave = @ciclo",
+      [{ name: "ciclo", type: sql.VarChar, value: targetCiclo }]
+    );
+    if (pRes.recordset.length > 0) activePeriod = pRes.recordset[0];
+  }
+  if (!activePeriod) {
+    const pRes = await runQuery(
+      "SELECT TOP 1 periodo_id, clave, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC"
+    );
+    activePeriod = pRes.recordset[0];
+  }
+  const activePeriodId = activePeriod?.periodo_id || null;
+
+  const allPeriodsResult = await runQuery(
+    "SELECT periodo_id, nombre FROM dbo.PeriodosEscolares ORDER BY fecha_inicio ASC"
+  );
+  const regularPeriods = allPeriodsResult.recordset.filter(p => !p.nombre.toLowerCase().includes("intersemestral"));
+  const periodIndexMap = new Map();
+  regularPeriods.forEach((p, idx) => {
+    periodIndexMap.set(p.periodo_id, idx);
+  });
+
+  const [allStudents, allGroups] = await Promise.all([
+    runQuery(`
+      SELECT 
+        u.usuario_id AS alumno_id,
+        u.nombre_completo,
+        u.correo,
+        pa.matricula,
+        pa.semestre AS base_semestre,
+        (
+          SELECT TOP 1 g.grupo_id
+          FROM dbo.Inscripciones i
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND ad.periodo_id = @activePeriodId AND i.estatus = 'activo'
+        ) AS active_grupo_id,
+        (
+          SELECT TOP 1 g.clave
+          FROM dbo.Inscripciones i
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND ad.periodo_id = @activePeriodId AND i.estatus = 'activo'
+        ) AS active_grupo_clave,
+        (
+          SELECT TOP 1 g.semestre
+          FROM dbo.Inscripciones i
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND ad.periodo_id = @activePeriodId AND i.estatus = 'activo'
+        ) AS active_grupo_semestre,
+        (
+          SELECT TOP 1 g.grupo_id
+          FROM dbo.Inscripciones i
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND i.estatus = 'activo'
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_id,
+        (
+          SELECT TOP 1 g.clave
+          FROM dbo.Inscripciones i
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND i.estatus = 'activo'
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_clave,
+        (
+          SELECT TOP 1 g.semestre
+          FROM dbo.Inscripciones i
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+          WHERE i.alumno_id = u.usuario_id AND i.estatus = 'activo'
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_semestre,
+        (
+          SELECT TOP 1 ad.periodo_id
+          FROM dbo.Inscripciones i
+          JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+          WHERE i.alumno_id = u.usuario_id AND i.estatus = 'activo'
+          ORDER BY ad.periodo_id DESC
+        ) AS last_grupo_periodo_id
+      FROM dbo.Usuarios u
+      JOIN dbo.PerfilesAlumnos pa ON u.usuario_id = pa.usuario_id
+      WHERE u.activo = 1 AND u.rol_id = 3 AND u.is_debug = 0
+    `, [{ name: "activePeriodId", type: sql.Int, value: activePeriodId }]),
+    runQuery("SELECT grupo_id, clave, semestre FROM dbo.Grupos")
+  ]);
+
+  const groupKeyMap = new Map();
+  allGroups.recordset.forEach(g => {
+    groupKeyMap.set(g.clave.toLowerCase().trim(), g);
+  });
+
+  const studentsByGroupId = new Map();
+
+  allStudents.recordset.forEach(s => {
+    let assignedGroupId = s.active_grupo_id;
+    let assignedSemester = s.active_grupo_semestre || s.base_semestre;
+
+    if (!assignedGroupId && s.last_grupo_clave && s.last_grupo_periodo_id) {
+      const lastIdx = periodIndexMap.get(s.last_grupo_periodo_id);
+      const activeIdx = periodIndexMap.get(activePeriodId);
+      if (lastIdx !== undefined && activeIdx !== undefined) {
+        const diff = activeIdx - lastIdx;
+        assignedSemester = s.last_grupo_semestre + diff;
+        if (assignedSemester > 9) assignedSemester = 9;
+        if (assignedSemester < 1) assignedSemester = 1;
+
+        const projectedKey = getSemesterGroupKeyForSemester(s.last_grupo_clave, assignedSemester);
+        const projectedGroup = groupKeyMap.get(projectedKey.toLowerCase().trim());
+        if (projectedGroup) {
+          assignedGroupId = projectedGroup.grupo_id;
+        }
+      }
+    }
+
+    if (assignedGroupId) {
+      if (!studentsByGroupId.has(assignedGroupId)) {
+        studentsByGroupId.set(assignedGroupId, []);
+      }
+      studentsByGroupId.get(assignedGroupId).push({
+        alumno_id: s.alumno_id,
+        nombre_completo: s.nombre_completo,
+        correo: s.correo,
+        matricula: s.matricula,
+        semestre: assignedSemester,
+        total_materias_inscritas: 0
+      });
+    }
+  });
+
+  return { activePeriodId, studentsByGroupId };
+}
+
+export const getAllGroups = async (req, res) => {
+  const { ciclo = null } = req.query;
+  try {
+    const { activePeriodId, studentsByGroupId } = await resolveStudentsByGroupForCycle(ciclo);
+
+    const query = `
+      SELECT 
+        g.grupo_id,
+        g.clave,
+        g.semestre,
+        g.turno,
+        g.cupo,
+        g.carrera_id,
+        g.periodo_id,
+        c.clave AS carrera_clave,
+        c.nombre AS carrera_nombre,
+        (SELECT COUNT(DISTINCT ad.asignacion_id) 
+         FROM dbo.AsignacionesDocentes ad 
+         WHERE ad.grupo_id = g.grupo_id AND (ad.periodo_id = @activePeriodId OR (@activePeriodId IS NULL AND ad.periodo_id IS NULL))) AS total_materias,
+        (SELECT COUNT(*) 
+         FROM dbo.InvitacionesAlumnos ia 
+         WHERE ia.grupo_id = g.grupo_id) AS total_invitaciones
+      FROM dbo.Grupos g
+      LEFT JOIN dbo.Carreras c ON g.carrera_id = c.carrera_id
+      WHERE (UPPER(RTRIM(g.clave)) LIKE '%M' OR UPPER(RTRIM(g.clave)) LIKE '%V')
+        AND g.clave != '*'
+      ORDER BY g.semestre, g.clave;
+    `;
+
+    const result = await runQuery(query, [{ name: "activePeriodId", type: sql.Int, value: activePeriodId }]);
+    
+    const enriched = result.recordset.map(g => ({
+      ...g,
+      total_alumnos: studentsByGroupId.get(g.grupo_id)?.length || 0
+    }));
+
+    return res.json(enriched);
+  } catch (error) {
+    console.error("Error getAllGroups:", error);
+    return res.status(500).json({ message: "Error al obtener la lista de grupos" });
+  }
+};
+
+export const deleteGroup = async (req, res) => {
+  const { id } = req.params;
+  const adminId = req.user?.id || null;
+
+  if (!id) {
+    return res.status(400).json({ message: "ID de grupo obligatorio" });
+  }
+
+  try {
+    const grupoId = parseInt(id);
+
+    const groupCheck = await runQuery(
+      "SELECT grupo_id, clave, periodo_id FROM dbo.Grupos WHERE grupo_id = @grupoId",
+      [{ name: "grupoId", type: sql.Int, value: grupoId }]
+    );
+
+    if (groupCheck.recordset.length === 0) {
+      return res.status(404).json({ message: "Grupo no encontrado" });
+    }
+
+    const groupInfo = groupCheck.recordset[0];
+
+    if (groupInfo.periodo_id && await isPeriodClosed(groupInfo.periodo_id)) {
+      return res.status(403).json({
+        message: "No se puede eliminar un grupo de un ciclo escolar concluido (modo solo lectura)."
+      });
+    }
+
+    // 1. Delete RegistrosAsistencia for sessions associated with this group
+    await runQuery(`
+      DELETE ra
+      FROM dbo.RegistrosAsistencia ra
+      JOIN dbo.SesionesAsistencia sa ON ra.sesion_id = sa.sesion_id
+      JOIN dbo.AsignacionesDocentes ad ON sa.asignacion_id = ad.asignacion_id
+      WHERE ad.grupo_id = @grupoId
+    `, [{ name: "grupoId", type: sql.Int, value: grupoId }]);
+
+    // 2. Delete TokensAsistencia
+    await runQuery(`
+      DELETE ta
+      FROM dbo.TokensAsistencia ta
+      JOIN dbo.AsignacionesDocentes ad ON ta.asignacion_id = ad.asignacion_id
+      WHERE ad.grupo_id = @grupoId
+    `, [{ name: "grupoId", type: sql.Int, value: grupoId }]);
+
+    // 3. Delete SesionesAsistencia
+    await runQuery(`
+      DELETE sa
+      FROM dbo.SesionesAsistencia sa
+      JOIN dbo.AsignacionesDocentes ad ON sa.asignacion_id = ad.asignacion_id
+      WHERE ad.grupo_id = @grupoId
+    `, [{ name: "grupoId", type: sql.Int, value: grupoId }]);
+
+    // 4. Delete Inscripciones
+    await runQuery(`
+      DELETE i
+      FROM dbo.Inscripciones i
+      JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+      WHERE ad.grupo_id = @grupoId
+    `, [{ name: "grupoId", type: sql.Int, value: grupoId }]);
+
+    // 5. Delete InvitacionesAlumnos
+    await runQuery(`
+      DELETE FROM dbo.InvitacionesAlumnos
+      WHERE grupo_id = @grupoId
+    `, [{ name: "grupoId", type: sql.Int, value: grupoId }]);
+
+    // 6. Delete AsignacionesDocentes
+    await runQuery(`
+      DELETE FROM dbo.AsignacionesDocentes
+      WHERE grupo_id = @grupoId
+    `, [{ name: "grupoId", type: sql.Int, value: grupoId }]);
+
+    // 7. Delete the Group itself
+    await runQuery(`
+      DELETE FROM dbo.Grupos
+      WHERE grupo_id = @grupoId
+    `, [{ name: "grupoId", type: sql.Int, value: grupoId }]);
+
+    // 8. Log in ActivityLog
+    await runQuery(`
+      INSERT INTO dbo.ActivityLog (actor_id, actor_role, action_type, entity_type, entity_id, description)
+      VALUES (@actorId, 'admin', 'DELETE_GROUP', 'Grupos', @entityId, @description)
+    `, [
+      { name: "actorId", type: sql.Int, value: adminId },
+      { name: "entityId", type: sql.NVarChar, value: String(grupoId) },
+      { name: "description", type: sql.NVarChar, value: `Grupo ${groupInfo.clave} (ID: ${grupoId}) eliminado por administrador` }
+    ]);
+
+    return res.json({
+      success: true,
+      message: `Grupo ${groupInfo.clave} eliminado exitosamente con todas sus dependencias limpiadas.`
+    });
+  } catch (error) {
+    console.error("Error deleteGroup:", error);
+    return res.status(500).json({ message: "Error al eliminar el grupo" });
+  }
+};
+
+export const getGroupStudents = async (req, res) => {
+  const { id } = req.params;
+  const { ciclo = null } = req.query;
+  if (!id) {
+    return res.status(400).json({ message: "ID de grupo obligatorio" });
+  }
+
+  try {
+    const grupoId = parseInt(id);
+    const { studentsByGroupId } = await resolveStudentsByGroupForCycle(ciclo);
+    const students = studentsByGroupId.get(grupoId) || [];
+    return res.json(students);
+  } catch (error) {
+    console.error("Error getGroupStudents:", error);
+    return res.status(500).json({ message: "Error al obtener los alumnos del grupo" });
+  }
+};
+
+export const removeStudentFromGroup = async (req, res) => {
+  const { id, studentId } = req.params;
+  const adminId = req.user?.id || null;
+
+  if (!id || !studentId) {
+    return res.status(400).json({ message: "ID de grupo y de alumno son obligatorios" });
+  }
+
+  try {
+    const grupoId = parseInt(id);
+    const alumnoId = parseInt(studentId);
+
+    const gCheck = await runQuery(
+      "SELECT grupo_id, clave, periodo_id FROM dbo.Grupos WHERE grupo_id = @grupoId",
+      [{ name: "grupoId", type: sql.Int, value: grupoId }]
+    );
+    if (gCheck.recordset.length === 0) {
+      return res.status(404).json({ message: "Grupo no encontrado" });
+    }
+    const groupInfo = gCheck.recordset[0];
+
+    if (groupInfo.periodo_id && await isPeriodClosed(groupInfo.periodo_id)) {
+      return res.status(403).json({
+        message: "No se puede remover alumnos de un grupo en un ciclo escolar concluido (modo solo lectura)."
+      });
+    }
+
+    const uCheck = await runQuery(
+      "SELECT usuario_id, nombre_completo, correo FROM dbo.Usuarios WHERE usuario_id = @alumnoId",
+      [{ name: "alumnoId", type: sql.Int, value: alumnoId }]
+    );
+    if (uCheck.recordset.length === 0) {
+      return res.status(404).json({ message: "Alumno no encontrado" });
+    }
+    const userInfo = uCheck.recordset[0];
+
+    // 1. Delete RegistrosAsistencia for this student in sessions of this group
+    await runQuery(`
+      DELETE ra
+      FROM dbo.RegistrosAsistencia ra
+      JOIN dbo.SesionesAsistencia sa ON ra.sesion_id = sa.sesion_id
+      JOIN dbo.AsignacionesDocentes ad ON sa.asignacion_id = ad.asignacion_id
+      WHERE ad.grupo_id = @grupoId AND ra.alumno_id = @alumnoId
+    `, [
+      { name: "grupoId", type: sql.Int, value: grupoId },
+      { name: "alumnoId", type: sql.Int, value: alumnoId }
+    ]);
+
+    // 2. Delete Inscripciones for this student in assignments of this group
+    await runQuery(`
+      DELETE i
+      FROM dbo.Inscripciones i
+      JOIN dbo.AsignacionesDocentes ad ON i.asignacion_id = ad.asignacion_id
+      JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+      WHERE i.alumno_id = @alumnoId 
+        AND (g.grupo_id = @grupoId OR g.clave = @clave OR RIGHT(g.clave, 2) = RIGHT(@clave, 2))
+    `, [
+      { name: "grupoId", type: sql.Int, value: grupoId },
+      { name: "alumnoId", type: sql.Int, value: alumnoId },
+      { name: "clave", type: sql.VarChar, value: groupInfo.clave }
+    ]);
+
+    // 3. Delete InvitacionesAlumnos if any
+    if (userInfo.correo) {
+      await runQuery(`
+        DELETE FROM dbo.InvitacionesAlumnos
+        WHERE grupo_id = @grupoId AND correo = @correo
+      `, [
+        { name: "grupoId", type: sql.Int, value: grupoId },
+        { name: "correo", type: sql.NVarChar, value: userInfo.correo }
+      ]);
+    }
+
+    // 4. Log in ActivityLog
+    await runQuery(`
+      INSERT INTO dbo.ActivityLog (actor_id, actor_role, action_type, entity_type, entity_id, description)
+      VALUES (@actorId, 'admin', 'REMOVE_STUDENT_FROM_GROUP', 'Inscripciones', @entityId, @description)
+    `, [
+      { name: "actorId", type: sql.Int, value: adminId },
+      { name: "entityId", type: sql.NVarChar, value: String(alumnoId) },
+      { name: "description", type: sql.NVarChar, value: `Alumno ${userInfo.nombre_completo} (ID: ${alumnoId}) removido del grupo ${groupInfo.clave} (ID: ${grupoId})` }
+    ]);
+
+    return res.json({
+      success: true,
+      message: `Alumno ${userInfo.nombre_completo} removido exitosamente del grupo ${groupInfo.clave}.`
+    });
+  } catch (error) {
+    console.error("Error removeStudentFromGroup:", error);
+    return res.status(500).json({ message: "Error al remover el alumno del grupo" });
   }
 };
 

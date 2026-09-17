@@ -23,31 +23,47 @@ const BASE_URL = getBaseUrl();
 
 let cachedSchoolCycle = localStorage.getItem('active_school_cycle') || null;
 
-export const getSchoolCycle = () => {
-  const selected = localStorage.getItem('selected_school_cycle');
-  if (selected) return selected;
-  if (cachedSchoolCycle) return cachedSchoolCycle;
-  
+export const getRealSchoolCycle = () => {
   const date = new Date();
   const year = date.getFullYear();
   const month = date.getMonth(); // 0 = Enero, 1 = Febrero, ..., 7 = Agosto, 8 = Septiembre
   
   if (month === 0) {
-    // Enero: Ciclo escolar 2 del año anterior
     return `${year - 1}-2`;
   } else if (month === 1) {
-    // Febrero: Intersemestral 2 del año anterior (Curso Intersemestral Febrero del año actual)
     return `Inter ${year - 1}-2`;
   } else if (month >= 2 && month <= 6) {
-    // Marzo a Julio: Ciclo escolar 1 del año actual
     return `${year}-1`;
   } else if (month === 7) {
-    // Agosto: Intersemestral 1 del año actual (Curso Intersemestral Agosto del año actual)
     return `Inter ${year}-1`;
   } else {
-    // Septiembre a Diciembre: Ciclo escolar 2 del año actual
     return `${year}-2`;
   }
+};
+
+export const getCycleWeight = (clave) => {
+  if (!clave || typeof clave !== 'string') return 0;
+  const isInter = clave.toUpperCase().includes('INTER');
+  const match = clave.match(/\d{4}/);
+  const year = match ? parseInt(match[0], 10) : 2026;
+  const isSecond = clave.endsWith('-2') || clave.endsWith(' 2');
+  if (!isInter && !isSecond) return year * 10 + 1; // YYYY-1
+  if (isInter && !isSecond) return year * 10 + 2;  // Inter YYYY-1
+  if (!isInter && isSecond) return year * 10 + 3;  // YYYY-2
+  return year * 10 + 4;                           // Inter YYYY-2
+};
+
+export const isPastSchoolCycle = (selectedCycle) => {
+  const current = getRealSchoolCycle();
+  const sel = selectedCycle || getSchoolCycle();
+  return getCycleWeight(sel) < getCycleWeight(current);
+};
+
+export const getSchoolCycle = () => {
+  const selected = localStorage.getItem('selected_school_cycle');
+  if (selected) return selected;
+  if (cachedSchoolCycle) return cachedSchoolCycle;
+  return getRealSchoolCycle();
 };
 
 export const setSchoolCycleCache = (cycleClave) => {
@@ -84,6 +100,8 @@ const normalizeUser = (user) => {
 
 export const api = {
   getSchoolCycle,
+  getRealSchoolCycle,
+  isPastSchoolCycle,
   setSchoolCycleCache,
 
   // --- PERIODS / SCHOOL CYCLES & EXCEL IMPORT ---
@@ -153,6 +171,8 @@ export const api = {
       throw new Error(errData.message || 'Error al alternar el ciclo escolar');
     }
     const data = await res.json();
+    setSchoolCycleCache(clave);
+    localStorage.setItem('selected_school_cycle', clave);
     await api.getActivePeriod();
     return data;
   },
@@ -343,6 +363,8 @@ export const api = {
   if (filters.search) params.append('busqueda', filters.search);
   if (filters.shift && filters.shift !== 'all') params.append('turno', filters.shift);
   if (filters.week) params.append('semana', filters.week);
+  const ciclo = filters.ciclo || getSchoolCycle();
+  if (ciclo) params.append('ciclo', ciclo);
   const url = `${BASE_URL}/dashboard/admin/summary?${params.toString()}`;
 
   const res = await fetch(url, {
@@ -409,9 +431,10 @@ export const api = {
 
   getTeacherOverview: async (docenteId, weekId = 'w1', ciclo = null) => {
     
+  const cycleToUse = ciclo || getSchoolCycle();
   let url = docenteId ? `${BASE_URL}/dashboard/docente/overview?docenteId=${docenteId}` : `${BASE_URL}/dashboard/docente/overview`;
-  if (ciclo) {
-    url += (url.includes('?') ? '&' : '?') + `ciclo=${encodeURIComponent(ciclo)}`;
+  if (cycleToUse) {
+    url += (url.includes('?') ? '&' : '?') + `ciclo=${encodeURIComponent(cycleToUse)}`;
   }
   const res = await fetch(url, {
     headers: getHeaders()
@@ -829,8 +852,10 @@ export const api = {
     return await res.json();
   },
 
-  getAlumnosOverview: async () => {
-    const res = await fetch(`${BASE_URL}/alumnos`, {
+  getAlumnosOverview: async (ciclo = null) => {
+    const cycleToUse = ciclo || getSchoolCycle();
+    const url = cycleToUse ? `${BASE_URL}/alumnos?ciclo=${encodeURIComponent(cycleToUse)}` : `${BASE_URL}/alumnos`;
+    const res = await fetch(url, {
       headers: getHeaders()
     });
     if (!res.ok) throw new Error('Error al obtener el listado de alumnos e invitaciones');
@@ -847,6 +872,19 @@ export const api = {
 
   },
 
+  getGroups: async (ciclo = null) => {
+    const cycleToUse = ciclo || getSchoolCycle();
+    const url = cycleToUse ? `${BASE_URL}/assignments/groups?ciclo=${encodeURIComponent(cycleToUse)}` : `${BASE_URL}/assignments/groups`;
+    const res = await fetch(url, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al obtener lista de grupos');
+    }
+    return await res.json();
+  },
+
   createGroup: async (groupData) => {
     const res = await fetch(`${BASE_URL}/assignments/groups`, {
       method: 'POST',
@@ -856,6 +894,43 @@ export const api = {
     if (!res.ok) {
       const errData = await res.json();
       throw new Error(errData.message || 'Error al crear grupo');
+    }
+    return await res.json();
+  },
+
+  deleteGroup: async (groupId) => {
+    const res = await fetch(`${BASE_URL}/assignments/groups/${groupId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al eliminar grupo');
+    }
+    return await res.json();
+  },
+
+  getGroupStudents: async (groupId, ciclo = null) => {
+    const cycleToUse = ciclo || getSchoolCycle();
+    const url = cycleToUse ? `${BASE_URL}/assignments/groups/${groupId}/students?ciclo=${encodeURIComponent(cycleToUse)}` : `${BASE_URL}/assignments/groups/${groupId}/students`;
+    const res = await fetch(url, {
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al obtener alumnos del grupo');
+    }
+    return await res.json();
+  },
+
+  removeStudentFromGroup: async (groupId, studentId) => {
+    const res = await fetch(`${BASE_URL}/assignments/groups/${groupId}/students/${studentId}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al remover alumno del grupo');
     }
     return await res.json();
   },

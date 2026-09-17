@@ -48,8 +48,8 @@ export const getActivePeriodo = async (req, res) => {
     let activePeriod = result.recordset[0];
     const now = new Date();
     
-    // 2. If no active period OR active period is expired, auto-activate the current period
-    if (!activePeriod || now > new Date(activePeriod.fecha_fin)) {
+    // 2. If no active period exists at all in the DB, auto-activate the current period
+    if (!activePeriod) {
       const currentClave = calculateCurrentClave();
       
       // Check if current period already exists in DB
