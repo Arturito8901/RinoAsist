@@ -12,11 +12,12 @@ const getBaseUrl = () => {
     return '/api';
   }
   
-  if (hostname !== 'localhost' && hostname !== '127.0.0.1') {
-    return `http://${hostname}:4000/api`;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return 'http://localhost:4000/api';
   }
   
-  return 'http://localhost:4000/api';
+  // Production fallback: Azure App Service
+  return 'https://asistencias-api-gxcvcuezdrhva5cz.westus-01.azurewebsites.net/api';
 };
 
 const BASE_URL = getBaseUrl();
