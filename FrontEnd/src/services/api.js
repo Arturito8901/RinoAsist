@@ -899,6 +899,19 @@ export const api = {
     return await res.json();
   },
 
+  updateGroup: async (groupId, groupData) => {
+    const res = await fetch(`${BASE_URL}/assignments/groups/${groupId}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(groupData)
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al actualizar grupo');
+    }
+    return await res.json();
+  },
+
   deleteGroup: async (groupId) => {
     const res = await fetch(`${BASE_URL}/assignments/groups/${groupId}`, {
       method: 'DELETE',

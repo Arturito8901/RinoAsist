@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { 
   Layers, Search, Plus, Trash2, RefreshCw, AlertTriangle, 
   CheckCircle2, Users, BookOpen, Clock, 
-  Filter, X, ShieldAlert, ChevronDown, ChevronUp, UserMinus, Mail, Hash, Lock
+  Filter, X, ShieldAlert, ChevronDown, ChevronUp, UserMinus, Mail, Hash, Lock,
+  Edit
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -26,6 +27,15 @@ export default function GruposTab({ assignmentOptions, onRefreshOptions, isPastC
   const [newGroupSemestre, setNewGroupSemestre] = useState(1);
   const [newGroupTurno, setNewGroupTurno] = useState('Matutino');
   const [newGroupCupo, setNewGroupCupo] = useState(30);
+
+  // Modal Edit Group
+  const [groupToEdit, setGroupToEdit] = useState(null);
+  const [editingGroup, setEditingGroup] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editClave, setEditClave] = useState('');
+  const [editSemestre, setEditSemestre] = useState(1);
+  const [editTurno, setEditTurno] = useState('Matutino');
+  const [editCupo, setEditCupo] = useState(30);
 
   // Modal Delete Confirmation
   const [groupToDelete, setGroupToDelete] = useState(null);
@@ -61,7 +71,7 @@ export default function GruposTab({ assignmentOptions, onRefreshOptions, isPastC
 
   // Lock body scroll when modal is open
   useEffect(() => {
-    if (isCreateModalOpen || groupToDelete || studentToRemove) {
+    if (isCreateModalOpen || groupToDelete || studentToRemove || groupToEdit) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -69,7 +79,7 @@ export default function GruposTab({ assignmentOptions, onRefreshOptions, isPastC
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isCreateModalOpen, groupToDelete, studentToRemove]);
+  }, [isCreateModalOpen, groupToDelete, studentToRemove, groupToEdit]);
 
   // Fetch students for a specific group
   const fetchStudentsForGroup = async (groupId) => {
@@ -208,6 +218,50 @@ export default function GruposTab({ assignmentOptions, onRefreshOptions, isPastC
       setCreateError(err.message || 'Error al crear el grupo.');
     } finally {
       setCreatingGroup(false);
+    }
+  };
+
+  // Open Edit Modal
+  const handleOpenEditModal = (group) => {
+    setEditError('');
+    setGroupToEdit(group);
+    setEditClave(group.clave || '');
+    setEditSemestre(group.semestre !== undefined && group.semestre !== null ? group.semestre : 1);
+    setEditTurno(group.turno || 'Matutino');
+    setEditCupo(group.cupo !== undefined && group.cupo !== null ? group.cupo : 30);
+  };
+
+  // Handle Update Group
+  const handleUpdateGroup = async (e) => {
+    e.preventDefault();
+    if (!groupToEdit) return;
+    if (!editClave.trim()) {
+      setEditError('La clave del grupo es obligatoria.');
+      return;
+    }
+
+    setEditingGroup(true);
+    setEditError('');
+
+    try {
+      await api.updateGroup(groupToEdit.grupo_id, {
+        clave: editClave.trim(),
+        semestre: parseInt(editSemestre),
+        turno: editTurno,
+        cupo: parseInt(editCupo)
+      });
+
+      setSuccessMessage(`Grupo "${editClave.trim()}" actualizado exitosamente.`);
+      setTimeout(() => setSuccessMessage(''), 4000);
+
+      setGroupToEdit(null);
+      await fetchGrupos();
+      if (onRefreshOptions) onRefreshOptions();
+    } catch (err) {
+      console.error('Error updating group:', err);
+      setEditError(err.message || 'Error al actualizar el grupo.');
+    } finally {
+      setEditingGroup(false);
     }
   };
 
@@ -574,17 +628,27 @@ export default function GruposTab({ assignmentOptions, onRefreshOptions, isPastC
                         </td>
                         <td className="py-3.5 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                           {!isPastCycle ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setDeleteError('');
-                                setGroupToDelete(g);
-                              }}
-                              className="p-1.5 hover:bg-rose-500/10 text-txt-subtle hover:text-rose-500 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center"
-                              title="Eliminar grupo completo"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(g)}
+                                className="p-1.5 hover:bg-brand-primary/10 text-txt-subtle hover:text-brand-primary rounded-xl transition-all cursor-pointer inline-flex items-center justify-center"
+                                title="Editar grupo"
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeleteError('');
+                                  setGroupToDelete(g);
+                                }}
+                                className="p-1.5 hover:bg-rose-500/10 text-txt-subtle hover:text-rose-500 rounded-xl transition-all cursor-pointer inline-flex items-center justify-center"
+                                title="Eliminar grupo completo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           ) : (
                             <span className="text-txt-muted/30 text-xs">-</span>
                           )}
@@ -837,6 +901,137 @@ export default function GruposTab({ assignmentOptions, onRefreshOptions, isPastC
                 >
                   {creatingGroup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : null}
                   <span>Guardar Grupo</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* MODAL: EDIT GROUP */}
+      {groupToEdit && createPortal(
+        <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-bg-card border border-bdr-base rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 theme-transition relative my-auto max-h-[92vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-bdr-base pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-brand-primary/10 text-brand-primary rounded-xl">
+                  <Edit className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-txt-base">Editar Grupo</h3>
+                  <p className="text-[11px] text-txt-muted">Modifica los detalles del grupo y cupo escolar</p>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setGroupToEdit(null)}
+                className="text-txt-subtle hover:text-txt-base p-1.5 rounded-lg hover:bg-bg-surface transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateGroup} className="space-y-4 text-left">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">
+                  Clave del Grupo <span className="text-rose-500">*</span>
+                </label>
+                <input 
+                  type="text" 
+                  value={editClave}
+                  onChange={(e) => setEditClave(e.target.value)}
+                  placeholder="Ej. 341-M, 362-V, 181-M..."
+                  required
+                  className="w-full bg-bg-surface dark:bg-slate-900 border border-bdr-base focus:border-brand-primary text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
+                />
+                <span className="text-[10px] text-txt-muted font-medium">
+                  Identificador del grupo (ej. 141-M, 242-V, 341-M).
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">
+                    Semestre <span className="text-rose-500">*</span>
+                  </label>
+                  <select 
+                    value={editSemestre} 
+                    onChange={(e) => setEditSemestre(parseInt(e.target.value))}
+                    required
+                    className="w-full bg-bg-surface dark:bg-slate-900 border border-bdr-base focus:border-brand-primary text-slate-900 dark:text-slate-100 rounded-xl px-3 py-2.5 outline-none text-sm cursor-pointer theme-transition"
+                  >
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(sem => (
+                      <option key={sem} value={sem} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100 font-medium">
+                        {sem}° Semestre
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">
+                    Turno <span className="text-rose-500">*</span>
+                  </label>
+                  <select 
+                    value={editTurno} 
+                    onChange={(e) => setEditTurno(e.target.value)}
+                    required
+                    className="w-full bg-bg-surface dark:bg-slate-900 border border-bdr-base focus:border-brand-primary text-slate-900 dark:text-slate-100 rounded-xl px-3 py-2.5 outline-none text-sm cursor-pointer theme-transition"
+                  >
+                    <option value="Matutino" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100 font-medium">
+                      Matutino
+                    </option>
+                    <option value="Vespertino" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100 font-medium">
+                      Vespertino
+                    </option>
+                    <option value="Mixto" className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100 font-medium">
+                      Mixto
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-txt-muted uppercase tracking-wider block">
+                  Cupo Máximo <span className="text-rose-500">*</span>
+                </label>
+                <input 
+                  type="number" 
+                  value={editCupo}
+                  onChange={(e) => setEditCupo(parseInt(e.target.value))}
+                  min="1"
+                  max="100"
+                  required
+                  className="w-full bg-bg-surface dark:bg-slate-900 border border-bdr-base focus:border-brand-primary text-slate-900 dark:text-slate-100 rounded-xl px-4 py-2.5 outline-none text-sm theme-transition"
+                />
+                <span className="text-[10px] text-txt-muted font-medium">
+                  Límite máximo de alumnos que pueden inscribirse o pertenecer a este grupo.
+                </span>
+              </div>
+
+              {editError && (
+                <div className="text-xs text-rose-500 font-semibold bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-xl">
+                  {editError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-bdr-base">
+                <button 
+                  type="button" 
+                  onClick={() => setGroupToEdit(null)} 
+                  disabled={editingGroup}
+                  className="px-4 py-2 rounded-xl text-xs font-semibold btn-secondary cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={editingGroup} 
+                  className="px-5 py-2 bg-brand-primary hover:bg-brand-hover text-white rounded-xl text-xs font-bold shadow-md cursor-pointer flex items-center gap-1.5"
+                >
+                  {editingGroup ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Edit className="w-3.5 h-3.5" />}
+                  <span>Guardar Cambios</span>
                 </button>
               </div>
             </form>

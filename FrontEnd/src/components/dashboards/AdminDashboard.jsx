@@ -6707,7 +6707,7 @@ export default function AdminDashboard({ user }) {
           <CheckCircle className="w-5 h-5 shrink-0 text-emerald-500 animate-pulse" />
           <div className="space-y-0.5 text-left">
             <h5 className="font-extrabold text-sm text-txt-base">Acción Completada</h5>
-            <p className="text-xs text-txt-muted font-semibold">Operación exitosa en base de datos.</p>
+            <p className="text-xs text-txt-muted font-semibold">Operación exitosa.</p>
           </div>
         </div>
       )}

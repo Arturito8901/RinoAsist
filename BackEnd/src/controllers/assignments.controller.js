@@ -1298,6 +1298,100 @@ export const getAllGroups = async (req, res) => {
   }
 };
 
+export const updateGroup = async (req, res) => {
+  const { id } = req.params;
+  const { clave, turno, semestre, cupo } = req.body || {};
+  const adminId = req.user?.id || null;
+
+  if (!id) {
+    return res.status(400).json({ message: "ID de grupo obligatorio" });
+  }
+
+  if (!clave || !turno) {
+    return res.status(400).json({ message: "Clave y turno son obligatorios" });
+  }
+
+  try {
+    const grupoId = parseInt(id);
+
+    const groupCheck = await runQuery(
+      "SELECT grupo_id, clave, turno, semestre, cupo, periodo_id FROM dbo.Grupos WHERE grupo_id = @grupoId",
+      [{ name: "grupoId", type: sql.Int, value: grupoId }]
+    );
+
+    if (groupCheck.recordset.length === 0) {
+      return res.status(404).json({ message: "Grupo no encontrado" });
+    }
+
+    const groupInfo = groupCheck.recordset[0];
+
+    if (groupInfo.periodo_id && await isPeriodClosed(groupInfo.periodo_id)) {
+      return res.status(403).json({
+        message: "No se puede editar un grupo de un ciclo escolar concluido (modo solo lectura)."
+      });
+    }
+
+    // Check if another group already has this clave + turno
+    const existing = await runQuery(
+      `SELECT grupo_id FROM dbo.Grupos WHERE clave = @clave AND turno = @turno AND grupo_id != @grupoId`,
+      [
+        { name: "clave", type: sql.VarChar, value: clave.trim() },
+        { name: "turno", type: sql.VarChar, value: turno },
+        { name: "grupoId", type: sql.Int, value: grupoId }
+      ]
+    );
+
+    if (existing.recordset.length > 0) {
+      return res.status(400).json({
+        message: `Ya existe otro grupo con la clave "${clave.trim()}" y turno "${turno}".`
+      });
+    }
+
+    const parsedSemestre = semestre !== undefined ? parseInt(semestre) : groupInfo.semestre;
+    const parsedCupo = cupo !== undefined ? parseInt(cupo) : groupInfo.cupo;
+
+    await runQuery(`
+      UPDATE dbo.Grupos
+      SET clave = @clave,
+          turno = @turno,
+          semestre = @semestre,
+          cupo = @cupo
+      WHERE grupo_id = @grupoId;
+    `, [
+      { name: "clave", type: sql.VarChar, value: clave.trim() },
+      { name: "turno", type: sql.VarChar, value: turno },
+      { name: "semestre", type: sql.TinyInt, value: parsedSemestre },
+      { name: "cupo", type: sql.Int, value: parsedCupo },
+      { name: "grupoId", type: sql.Int, value: grupoId }
+    ]);
+
+    // Log in ActivityLog
+    await runQuery(`
+      INSERT INTO dbo.ActivityLog (actor_id, actor_role, action_type, entity_type, entity_id, description)
+      VALUES (@actorId, 'admin', 'UPDATE_GROUP', 'Grupos', @entityId, @description)
+    `, [
+      { name: "actorId", type: sql.Int, value: adminId },
+      { name: "entityId", type: sql.NVarChar, value: String(grupoId) },
+      { name: "description", type: sql.NVarChar, value: `Grupo ${clave.trim()} (ID: ${grupoId}) actualizado por administrador (Cupo: ${parsedCupo}, Turno: ${turno}, Semestre: ${parsedSemestre})` }
+    ]);
+
+    return res.json({
+      success: true,
+      message: `Grupo ${clave.trim()} actualizado correctamente.`,
+      grupo: {
+        grupo_id: grupoId,
+        clave: clave.trim(),
+        turno,
+        semestre: parsedSemestre,
+        cupo: parsedCupo
+      }
+    });
+  } catch (error) {
+    console.error("Error updateGroup:", error);
+    return res.status(500).json({ message: "Error al actualizar el grupo" });
+  }
+};
+
 export const deleteGroup = async (req, res) => {
   const { id } = req.params;
   const adminId = req.user?.id || null;

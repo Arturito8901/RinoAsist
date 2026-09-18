@@ -15,6 +15,7 @@ import {
   clearActivePeriodAssignments,
   createGroup,
   getAllGroups,
+  updateGroup,
   deleteGroup,
   getGroupStudents,
   removeStudentFromGroup,
@@ -42,6 +43,7 @@ router.delete("/intersemestral/clear", authRequired, roleRequired("admin"), clea
 // Groups management routes
 router.get("/groups", authRequired, roleRequired("admin"), getAllGroups);
 router.post("/groups", authRequired, roleRequired("admin"), createGroup);
+router.put("/groups/:id", authRequired, roleRequired("admin"), updateGroup);
 router.delete("/groups/:id", authRequired, roleRequired("admin"), deleteGroup);
 router.get("/groups/:id/students", authRequired, roleRequired("admin"), getGroupStudents);
 router.delete("/groups/:id/students/:studentId", authRequired, roleRequired("admin"), removeStudentFromGroup);
