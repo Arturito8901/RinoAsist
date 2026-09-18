@@ -328,9 +328,9 @@ LEFT JOIN dbo.Materias m ON m.materia_id = ad.materia_id
 LEFT JOIN dbo.vwResumenAsistencias v ON v.asignacion_id = ad.asignacion_id
 WHERE g.clave <> '*'
   AND (
-    (@isInter = 1 AND (g.periodo_id IS NULL OR g.periodo_id = @periodoId))
+    (@isInter = 1 AND (g.periodo_id IS NULL OR g.periodo_id = @periodoId OR g.clave = 'Intersemestral'))
     OR
-    (@isInter = 0 AND g.periodo_id IS NULL)
+    (@isInter = 0 AND (g.periodo_id IS NULL OR g.periodo_id = @periodoId) AND g.clave <> 'Intersemestral')
   )
 ORDER BY g.semestre, g.clave, m.nombre;
 `;

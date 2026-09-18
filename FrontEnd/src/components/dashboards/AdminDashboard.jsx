@@ -6274,10 +6274,14 @@ export default function AdminDashboard({ user }) {
                   required
                   className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-4 py-2.5 outline-none text-sm cursor-pointer theme-transition"
                 >
-                  <option value="">Selecciona un Grupo</option>
+                  <option value="">
+                    {assignmentOptions.grupos && assignmentOptions.grupos.length > 0 
+                      ? "Selecciona un Grupo" 
+                      : "No hay grupos disponibles"}
+                  </option>
                   {assignmentOptions.grupos?.map(g => (
                     <option key={g.id || g.grupo_id} value={g.id || g.grupo_id}>
-                      {g.clave}{isIntersemestral ? ' (Intersemestral)' : ''} - Turno {g.turno || 'N/A'}
+                      {g.clave}{isIntersemestral ? ' (Intersemestral)' : ''} - Turno {g.turno || 'N/A'}{g.semestre ? ` (${g.semestre}° Semestre)` : ''}
                     </option>
                   ))}
                 </select>

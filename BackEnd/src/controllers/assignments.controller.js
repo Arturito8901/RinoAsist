@@ -45,9 +45,15 @@ ORDER BY g.semestre, g.clave, m.nombre;
 `;
 
 const CHECK_ASSIGNMENT = `
+DECLARE @activePeriodId INT;
+SELECT TOP 1 @activePeriodId = periodo_id FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC;
+
 SELECT 1
 FROM dbo.AsignacionesDocentes
-WHERE docente_id = @docenteId AND materia_id = @materiaId AND grupo_id = @grupoId;
+WHERE docente_id = @docenteId 
+  AND materia_id = @materiaId 
+  AND grupo_id = @grupoId
+  AND (periodo_id = @activePeriodId OR (@activePeriodId IS NULL AND periodo_id IS NULL));
 `;
 
 const INSERT_ASSIGNMENT = `
@@ -86,6 +92,7 @@ async function isPeriodClosed(targetPeriodId = null) {
 }
 
 export const getAssignmentOptions = async (req, res) => {
+  const { ciclo = null } = req.query;
   try {
     // Ensure Intersemestral subject exists
     const mCheck = await runQuery("SELECT materia_id FROM dbo.Materias WHERE nombre = 'Intersemestral'");
@@ -99,37 +106,83 @@ export const getAssignmentOptions = async (req, res) => {
       await runQuery("INSERT INTO dbo.Grupos (clave, turno, semestre, cupo) VALUES ('Intersemestral', 'Matutino', 1, 30)");
     }
 
-    // Resolve active period
-    const activePeriodResult = await runQuery(`
-      SELECT TOP 1 periodo_id, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC
-    `);
-    const activePeriod = activePeriodResult.recordset[0];
-    const activePeriodId = activePeriod?.periodo_id;
-    const isInter = activePeriod?.nombre?.toLowerCase().includes("intersemestral");
+    // Resolve target period
+    let targetPeriod = null;
+    if (ciclo) {
+      const pRes = await runQuery(
+        "SELECT TOP 1 periodo_id, clave, nombre FROM dbo.PeriodosEscolares WHERE clave = @ciclo",
+        [{ name: "ciclo", type: sql.VarChar, value: ciclo }]
+      );
+      if (pRes.recordset.length > 0) targetPeriod = pRes.recordset[0];
+    }
+    if (!targetPeriod) {
+      const pRes = await runQuery(
+        "SELECT TOP 1 periodo_id, clave, nombre FROM dbo.PeriodosEscolares WHERE activo = 1 ORDER BY creado_en DESC"
+      );
+      targetPeriod = pRes.recordset[0];
+    }
+    const activePeriodId = targetPeriod?.periodo_id || null;
+    const isInter = targetPeriod?.nombre?.toLowerCase().includes("intersemestral") || targetPeriod?.clave?.toLowerCase().includes("inter");
 
-    let dynamicGruposQuery = `
-      SELECT grupo_id AS id, clave, turno, semestre
-      FROM dbo.Grupos
-      WHERE periodo_id IS NULL
-      ORDER BY clave;
-    `;
+    let dynamicGruposQuery;
     let queryParams = [];
 
     if (isInter && activePeriodId) {
       dynamicGruposQuery = `
-        SELECT grupo_id AS id, clave, turno, semestre
+        SELECT grupo_id AS id, clave, turno, semestre, cupo
         FROM dbo.Grupos
-        WHERE periodo_id IS NULL OR periodo_id = @activePeriodId
-        ORDER BY clave;
+        WHERE (periodo_id = @activePeriodId OR clave = 'Intersemestral')
+          AND clave != '*'
+        ORDER BY semestre, clave;
       `;
       queryParams.push({ name: "activePeriodId", type: sql.Int, value: activePeriodId });
+    } else {
+      dynamicGruposQuery = `
+        SELECT grupo_id AS id, clave, turno, semestre, cupo
+        FROM dbo.Grupos
+        WHERE (periodo_id IS NULL OR periodo_id = @activePeriodId)
+          AND clave != '*'
+          AND clave != 'Intersemestral'
+        ORDER BY semestre, clave;
+      `;
+      if (activePeriodId) {
+        queryParams.push({ name: "activePeriodId", type: sql.Int, value: activePeriodId });
+      }
     }
+
+    // Dynamic Asignaciones Query: filtered by target period
+    let dynamicAsignacionesQuery = `
+      SELECT 
+        ad.asignacion_id AS id,
+        ad.docente_id,
+        u.nombre_completo AS docente_nombre,
+        ad.materia_id,
+        m.nombre AS materia_nombre,
+        m.clave AS materia_clave,
+        ad.grupo_id,
+        g.clave AS grupo_clave,
+        g.semestre,
+        g.turno,
+        ad.horario
+      FROM dbo.AsignacionesDocentes ad
+      JOIN dbo.Usuarios u ON ad.docente_id = u.usuario_id
+      JOIN dbo.Materias m ON ad.materia_id = m.materia_id
+      JOIN dbo.Grupos g ON ad.grupo_id = g.grupo_id
+      WHERE u.activo = 1
+    `;
+    let asignacionesParams = [];
+
+    if (activePeriodId) {
+      dynamicAsignacionesQuery += ` AND (ad.periodo_id = @activePeriodId OR (@activePeriodId IS NULL AND ad.periodo_id IS NULL))`;
+      asignacionesParams.push({ name: "activePeriodId", type: sql.Int, value: activePeriodId });
+    }
+    dynamicAsignacionesQuery += ` ORDER BY g.semestre, g.clave, m.nombre;`;
 
     const [docentesResult, materiasResult, gruposResult, asignacionesResult] = await Promise.all([
       runQuery(DOCENTES_QUERY),
       runQuery(MATERIAS_QUERY),
       runQuery(dynamicGruposQuery, queryParams),
-      runQuery(ASIGNACIONES_QUERY),
+      runQuery(dynamicAsignacionesQuery, asignacionesParams),
     ]);
 
     return res.json({

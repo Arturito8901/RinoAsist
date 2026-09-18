@@ -863,14 +863,14 @@ export const api = {
     return await res.json();
   },
 
-  getAssignmentOptions: async () => {
-    
-  const res = await fetch(`${BASE_URL}/assignments/options`, {
-    headers: getHeaders()
-  });
-  if (!res.ok) throw new Error('Error al obtener opciones de asignación');
-  return await res.json();
-
+  getAssignmentOptions: async (ciclo = null) => {
+    const cycleToUse = ciclo || getSchoolCycle();
+    const url = cycleToUse ? `${BASE_URL}/assignments/options?ciclo=${encodeURIComponent(cycleToUse)}` : `${BASE_URL}/assignments/options`;
+    const res = await fetch(url, {
+      headers: getHeaders()
+    });
+    if (!res.ok) throw new Error('Error al obtener opciones de asignación');
+    return await res.json();
   },
 
   getGroups: async (ciclo = null) => {
