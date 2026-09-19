@@ -978,15 +978,16 @@ export const api = {
 
   },
 
-  updateAssignment: async (assignmentId, horario) => {
+  updateAssignment: async (assignmentId, data) => {
+    const payload = typeof data === 'object' && data !== null ? data : { horario: data };
     const res = await fetch(`${BASE_URL}/assignments/${assignmentId}`, {
       method: 'PUT',
       headers: getHeaders(),
-      body: JSON.stringify({ horario })
+      body: JSON.stringify(payload)
     });
     if (!res.ok) {
       const errData = await res.json();
-      throw new Error(errData.message || 'Error al actualizar el horario');
+      throw new Error(errData.message || 'Error al actualizar la asignación');
     }
     return await res.json();
   },

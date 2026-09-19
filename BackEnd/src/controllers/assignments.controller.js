@@ -200,7 +200,11 @@ export const getAssignmentOptions = async (req, res) => {
 };
 
 export const createAssignment = async (req, res) => {
-  const { docenteId, materiaId, grupoId, horario = null } = req.body || {};
+  const body = req.body || {};
+  const docenteId = body.docenteId || body.docente_id;
+  const materiaId = body.materiaId || body.materia_id;
+  const grupoId = body.grupoId || body.grupo_id;
+  const horario = body.horario || null;
 
   if (!docenteId || !materiaId || !grupoId) {
     return res.status(400).json({
@@ -397,7 +401,7 @@ export const deleteMyAssignment = async (req, res) => {
 
 export const updateAssignment = async (req, res) => {
   const { id } = req.params;
-  const { horario } = req.body || {};
+  const { horario, docente_id } = req.body || {};
 
   if (!id) {
     return res.status(400).json({ message: "ID de asignación obligatorio" });
@@ -406,24 +410,41 @@ export const updateAssignment = async (req, res) => {
   try {
     const asignacionId = parseInt(id);
 
+    const existing = await runQuery(`
+      SELECT asignacion_id, docente_id, materia_id, grupo_id, horario, periodo_id
+      FROM dbo.AsignacionesDocentes
+      WHERE asignacion_id = @asignacionId
+    `, [{ name: "asignacionId", type: sql.Int, value: asignacionId }]);
+
+    if (!existing.recordset || existing.recordset.length === 0) {
+      return res.status(404).json({ message: "Asignación no encontrada" });
+    }
+
+    const current = existing.recordset[0];
+    const newDocenteId = docente_id !== undefined && docente_id !== '' ? parseInt(docente_id) : current.docente_id;
+    const newHorario = horario !== undefined ? String(horario).trim() : current.horario;
+
     await runQuery(`
       UPDATE dbo.AsignacionesDocentes
-      SET horario = @horario
+      SET horario = @horario,
+          docente_id = @docenteId
       WHERE asignacion_id = @asignacionId
     `, [
       { name: "asignacionId", type: sql.Int, value: asignacionId },
-      { name: "horario", type: sql.NVarChar, value: horario }
+      { name: "horario", type: sql.NVarChar, value: newHorario },
+      { name: "docenteId", type: sql.Int, value: newDocenteId }
     ]);
 
     return res.json({ 
       success: true, 
-      message: "Horario de asignación actualizado con éxito",
+      message: "Asignación actualizada con éxito",
       asignacion_id: asignacionId,
-      horario
+      docente_id: newDocenteId,
+      horario: newHorario
     });
   } catch (error) {
-    console.error("Error updating assignment schedule:", error);
-    return res.status(500).json({ message: "No se pudo actualizar el horario de la asignación" });
+    console.error("Error updating assignment:", error);
+    return res.status(500).json({ message: "No se pudo actualizar la asignación" });
   }
 };
 

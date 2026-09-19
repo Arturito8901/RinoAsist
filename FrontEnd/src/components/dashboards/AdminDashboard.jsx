@@ -6,6 +6,7 @@ import ThemeToggle from '../ThemeToggle';
 import DesersionTab from '../DesersionTab';
 import JustificantesTab from '../JustificantesTab';
 import GruposTab from '../GruposTab';
+import AsignacionesTab from '../AsignacionesTab';
 import rhinoMascot from '../../assets/rhino_mascot.png';
 import rinoasistBanner from '../../assets/rinoasist_banner.png';
 import rinoasistBannerDark from '../../assets/rinoasist_banner_dark.png';
@@ -3068,7 +3069,7 @@ export default function AdminDashboard({ user }) {
   }, [activeTab]);
 
   useEffect(() => {
-    if (!loading && activeTab === 'alumnos') {
+    if (!loading && (activeTab === 'alumnos' || activeTab === 'asignaciones')) {
       loadAlumnosOverviewData();
     }
   }, [activeTab, loading]);
@@ -3248,6 +3249,24 @@ export default function AdminDashboard({ user }) {
                 <Layers className="w-4 h-4 shrink-0" />
                 <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
                   Grupos
+                </span>
+              </button>
+            )}
+            {!isIntersemestral && (
+              <button 
+                onClick={() => {
+                  setActiveTab('asignaciones');
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`w-full text-left py-2.5 px-3 rounded-xl flex items-center font-semibold text-sm cursor-pointer transition-all ${
+                  activeTab === 'asignaciones'
+                    ? 'bg-brand-primary/10 text-brand-primary border border-brand-primary/20'
+                    : 'hover:bg-bg-base/40 text-txt-muted hover:text-brand-primary border border-transparent'
+                } ${isSidebarCollapsed ? 'justify-center' : 'justify-start'}`}
+              >
+                <CalendarRange className="w-4 h-4 shrink-0" />
+                <span className={`transition-all duration-300 ease-in-out overflow-hidden whitespace-nowrap ${isSidebarCollapsed ? 'w-0 opacity-0' : 'w-28 opacity-100 ml-3'}`}>
+                  Asignar Materias
                 </span>
               </button>
             )}
@@ -4966,15 +4985,14 @@ export default function AdminDashboard({ user }) {
             <div className="space-y-6 text-left">
               <div className="bg-bg-card border border-bdr-base p-6 rounded-2xl shadow-sm theme-transition flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div className="flex-grow">
-                  <h3 className="font-extrabold text-2xl">Gestión de Alumnos y Grupos</h3>
+                  <h3 className="font-extrabold text-2xl">Gestión de Alumnos</h3>
                   <p className="text-xs font-semibold text-txt-muted mt-1">
-                    Administra e invita alumnos al sistema, y gestiona las materias y horarios correspondientes a cada grupo.
+                    Administra e invita alumnos al sistema y atiende solicitudes de baja escolar.
                   </p>
                 </div>
                 <div className="flex bg-bg-surface border border-bdr-base rounded-xl p-1 theme-transition shrink-0">
                   {[
                     { id: 'invitaciones', label: 'Invitaciones y Alumnos' },
-                    { id: 'materias', label: 'Asignar Materias' },
                     { id: 'bajas', label: 'Solicitudes de Baja' }
                   ].map((subTab) => (
                     <button
@@ -5366,424 +5384,6 @@ export default function AdminDashboard({ user }) {
                 </div>
               )}
 
-              {alumnosSubTab === 'materias' && (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fadeIn">
-                  <div className="lg:col-span-4 bg-bg-card border border-bdr-base p-6 rounded-2xl shadow-sm theme-transition flex flex-col space-y-4 h-fit">
-                    <div>
-                      <h4 className="font-bold text-lg text-txt-base">Asignar Materia a Grupo</h4>
-                      <p className="text-[11px] text-txt-muted mt-0.5">
-                        Asigna una materia y un docente a un grupo específico. Todos los alumnos registrados en el grupo serán inscritos automáticamente.
-                      </p>
-                    </div>
-
-                    <form onSubmit={handleSaveGroupAssignment} className="space-y-4">
-                      <div className="grid grid-cols-2 gap-2">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                            Semestre (Filtro)
-                          </label>
-                          <select
-                            value={assignGroupSemesterFilter}
-                            onChange={(e) => {
-                              setAssignGroupSemesterFilter(e.target.value);
-                              setSelectedGroupIdForMateria('');
-                            }}
-                            className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-2.5 py-2 outline-none text-xs theme-transition cursor-pointer"
-                          >
-                            <option value="all">Todos</option>
-                            {Array.from({ length: 9 }, (_, i) => String(i + 1)).map(sem => (
-                              <option key={sem} value={sem}>{sem}° Semestre</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                            Turno (Filtro)
-                          </label>
-                          <select
-                            value={assignGroupShiftFilter}
-                            onChange={(e) => {
-                              setAssignGroupShiftFilter(e.target.value);
-                              setSelectedGroupIdForMateria('');
-                            }}
-                            className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-2.5 py-2 outline-none text-xs theme-transition cursor-pointer"
-                          >
-                            <option value="all">Todos</option>
-                            <option value="Matutino">Matutino</option>
-                            <option value="Vespertino">Vespertino</option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                          Seleccionar Grupo
-                        </label>
-                        <select
-                          required
-                          value={selectedGroupIdForMateria}
-                          onChange={(e) => setSelectedGroupIdForMateria(e.target.value)}
-                          className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-3 py-2.5 outline-none text-sm theme-transition cursor-pointer"
-                        >
-                          <option value="">Selecciona un grupo...</option>
-                          {filteredGroupsForAssign.map(g => (
-                            <option key={g.id} value={g.id}>
-                              {g.clave} - {g.turno} ({g.semestre}° Sem)
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                          Seleccionar Materia
-                        </label>
-                        <select
-                          required
-                          value={selectedMateriaIdForGroup}
-                          onChange={(e) => setSelectedMateriaIdForGroup(e.target.value)}
-                          className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-3 py-2.5 outline-none text-sm theme-transition cursor-pointer"
-                        >
-                          <option value="">Selecciona una materia...</option>
-                          {assignmentOptions.materias?.map(m => (
-                            <option key={m.id} value={m.id}>
-                              {m.clave} - {m.nombre}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                          Seleccionar Docente
-                        </label>
-                        <select
-                          required
-                          value={selectedDocenteIdForGroup}
-                          onChange={(e) => setSelectedDocenteIdForGroup(e.target.value)}
-                          className="w-full bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-3 py-2.5 outline-none text-sm theme-transition cursor-pointer"
-                        >
-                          <option value="">Selecciona un docente...</option>
-                          {assignmentOptions.docentes?.map(d => (
-                            <option key={d.id} value={d.id}>
-                              {d.nombre} ({d.turno})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="space-y-3">
-                        <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                          Calendario de Horarios (Días)
-                        </label>
-                        {!selectedGroupIdForMateria ? (
-                          <div className="p-4 bg-bg-surface/50 border border-bdr-base rounded-xl text-center text-xs text-txt-muted italic">
-                            Selecciona un grupo para habilitar el calendario de horarios.
-                          </div>
-                        ) : (
-                          <div className="space-y-3 animate-fadeIn">
-                            {(() => {
-                              const getSelectedHoursForDay = (dayKey) => {
-                                const daySlots = selectedScheduleSlots.filter(s => s.day === dayKey).map(s => s.hour).sort((a, b) => a - b);
-                                if (daySlots.length === 0) return 'Sin asignar';
-                                const blocks = [];
-                                let start = daySlots[0];
-                                let prev = daySlots[0];
-                                for (let i = 1; i < daySlots.length; i++) {
-                                  if (daySlots[i] === prev + 1) {
-                                    prev = daySlots[i];
-                                  } else {
-                                    blocks.push(`${start}-${prev + 1}`);
-                                    start = daySlots[i];
-                                    prev = daySlots[i];
-                                  }
-                                }
-                                blocks.push(`${start}-${prev + 1}`);
-                                return blocks.join('/');
-                              };
-                              
-                              return (
-                                <div className="grid grid-cols-3 gap-2">
-                                  {[
-                                    { key: 'Lu', label: 'Lunes' },
-                                    { key: 'Ma', label: 'Martes' },
-                                    { key: 'Mi', label: 'Miércoles' },
-                                    { key: 'Ju', label: 'Jueves' },
-                                    { key: 'Vi', label: 'Viernes' },
-                                    { key: 'Sa', label: 'Sábado' }
-                                  ].map(day => {
-                                    const isDayActive = activeScheduleDay === day.key;
-                                    const hoursText = getSelectedHoursForDay(day.key);
-                                    const hasHours = hoursText !== 'Sin asignar';
-                                    return (
-                                      <button
-                                        key={day.key}
-                                        type="button"
-                                        onClick={() => setActiveScheduleDay(day.key)}
-                                        className={`p-2 rounded-xl border text-left transition-all relative cursor-pointer outline-none select-none flex flex-col justify-between h-14 ${
-                                          isDayActive 
-                                            ? 'bg-brand-primary/10 border-brand-primary ring-2 ring-brand-primary/25 shadow-md shadow-brand-primary/5' 
-                                            : 'bg-bg-surface border-bdr-base hover:border-brand-primary/40'
-                                        }`}
-                                      >
-                                        <span className="text-[10px] font-bold uppercase tracking-wider block text-txt-muted">{day.label}</span>
-                                        <span className={`text-[9.5px] font-extrabold truncate block mt-1 ${hasHours ? 'text-brand-primary' : 'text-txt-subtle'}`}>
-                                          {hoursText}
-                                        </span>
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              );
-                            })()}
-
-                            <div className="bg-bg-surface/30 border border-bdr-base rounded-2xl p-4 space-y-3 theme-transition">
-                              <div className="flex justify-between items-center border-b border-bdr-base/60 pb-2">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="h-2 w-2 rounded-full bg-brand-primary"></span>
-                                  <h5 className="text-[11px] font-extrabold uppercase tracking-widest text-txt-base">
-                                    Configurar Horario - {
-                                      activeScheduleDay === 'Lu' ? 'Lunes' : 
-                                      activeScheduleDay === 'Ma' ? 'Martes' : 
-                                      activeScheduleDay === 'Mi' ? 'Miércoles' : 
-                                      activeScheduleDay === 'Ju' ? 'Jueves' : 
-                                      activeScheduleDay === 'Vi' ? 'Viernes' : 'Sábado'
-                                    }
-                                  </h5>
-                                </div>
-                                <div className="flex gap-2">
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const activeDayConflicts = conflictSlots.filter(s => s.day === activeScheduleDay).map(s => s.hour);
-                                      const activeDayFreeSlots = hoursToShow.filter(h => !activeDayConflicts.includes(h));
-                                      setSelectedScheduleSlots(prev => {
-                                        const otherDays = prev.filter(s => s.day !== activeScheduleDay);
-                                        const activeDaySelected = prev.filter(s => s.day === activeScheduleDay);
-                                        if (activeDaySelected.length === activeDayFreeSlots.length) {
-                                          return otherDays;
-                                        } else {
-                                          return [...otherDays, ...activeDayFreeSlots.map(h => ({ day: activeScheduleDay, hour: h }))];
-                                        }
-                                      });
-                                    }}
-                                    className="text-[9px] font-bold text-brand-primary hover:underline"
-                                  >
-                                    Seleccionar todo
-                                  </button>
-                                  <span className="text-txt-subtle text-[9px]">•</span>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setSelectedScheduleSlots(prev => prev.filter(s => s.day !== activeScheduleDay));
-                                    }}
-                                    className="text-[9px] font-bold text-rose-500 hover:underline"
-                                  >
-                                    Limpiar
-                                  </button>
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {hoursToShow.map(hour => {
-                                  const timeLabel = `${String(hour).padStart(2, '0')}:00 - ${String(hour + 1).padStart(2, '0')}:00`;
-                                  const conflict = conflictSlots.find(s => s.day === activeScheduleDay && s.hour === hour);
-                                  const isSelected = selectedScheduleSlots.some(s => s.day === activeScheduleDay && s.hour === hour);
-                                  
-                                  if (conflict) {
-                                    return (
-                                      <div
-                                        key={hour}
-                                        className="p-2 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-xl text-[9.5px] font-semibold cursor-not-allowed select-none relative group/slot text-center"
-                                        title={conflict.reason}
-                                      >
-                                        <div className="flex items-center justify-center gap-1">
-                                          <span>{timeLabel}</span>
-                                          <span className="text-[8px] bg-rose-500 text-white px-1 py-0.2 rounded font-extrabold">Ocupado</span>
-                                        </div>
-                                      </div>
-                                    );
-                                  }
-                                  
-                                  return (
-                                    <button
-                                      key={hour}
-                                      type="button"
-                                      onClick={() => toggleScheduleSlot(activeScheduleDay, hour)}
-                                      className={`p-2 rounded-xl border text-center transition-all cursor-pointer font-bold text-xs select-none active:scale-[0.98] ${
-                                        isSelected 
-                                          ? 'bg-brand-primary border-brand-primary text-white shadow-md shadow-brand-primary/10' 
-                                          : 'bg-bg-surface border-bdr-base text-txt-muted hover:border-brand-primary/45 hover:text-brand-primary'
-                                      }`}
-                                    >
-                                      {timeLabel}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-txt-muted uppercase tracking-widest block">
-                          Horario Seleccionado
-                        </label>
-                        <input
-                          type="text"
-                          readOnly
-                          required
-                          value={groupAssignmentSchedule}
-                          placeholder="Selecciona horas en el calendario..."
-                          className="w-full bg-bg-surface/50 border border-bdr-base text-txt-muted rounded-xl px-4 py-2.5 outline-none text-xs theme-transition font-mono cursor-not-allowed"
-                        />
-                      </div>
-
-                      {groupAssignmentError && (
-                        <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 text-xs rounded-xl flex items-center gap-2">
-                          <ShieldAlert className="w-4 h-4 shrink-0" />
-                          <span>{groupAssignmentError}</span>
-                        </div>
-                      )}
-
-                      {groupAssignmentSuccess && (
-                        <div className="p-3 bg-green-500/10 border border-green-500/20 text-green-500 text-xs rounded-xl flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 shrink-0" />
-                          <span>¡Materia asignada con éxito!</span>
-                        </div>
-                      )}
-
-                      {isPastCycle ? (
-                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-600 dark:text-amber-400 text-xs font-semibold flex items-center gap-2">
-                          <Lock className="w-4 h-4 shrink-0" />
-                          <span>Ciclo cerrado (solo lectura). No se pueden asignar materias.</span>
-                        </div>
-                      ) : (
-                        <button
-                          type="submit"
-                          disabled={savingGroupAssignment || !selectedGroupIdForMateria || !selectedMateriaIdForGroup || !selectedDocenteIdForGroup || !groupAssignmentSchedule}
-                          className="w-full bg-brand-primary hover:bg-brand-hover disabled:opacity-50 text-white font-bold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md select-none animate-pulse-subtle"
-                        >
-                          {savingGroupAssignment ? (
-                            <>
-                              <RefreshCw className="w-4 h-4 animate-spin" />
-                              <span>Guardando...</span>
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 className="w-4 h-4" />
-                              <span>Asignar Asignatura</span>
-                            </>
-                          )}
-                        </button>
-                      )}
-                    </form>
-                  </div>
-
-                  <div className="lg:col-span-8 bg-bg-card border border-bdr-base p-6 rounded-2xl shadow-sm theme-transition flex flex-col space-y-4 h-fit">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                      <div>
-                        <h4 className="font-bold text-lg text-txt-base">Materias Asignadas por Grupo</h4>
-                        <p className="text-xs font-semibold text-txt-muted">
-                          {filteredAssignments.length} asignaciones totales encontradas
-                        </p>
-                      </div>
-                      
-                      <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-                        <select
-                          value={groupAssignmentSemesterFilter}
-                          onChange={(e) => {
-                            setGroupAssignmentSemesterFilter(e.target.value);
-                            setGroupAssignmentFilter('all');
-                          }}
-                          className="bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-2.5 py-1.5 outline-none text-xs theme-transition cursor-pointer"
-                        >
-                          <option value="all">Semestre: Todos</option>
-                          {Array.from({ length: 9 }, (_, i) => String(i + 1)).map(sem => (
-                            <option key={sem} value={sem}>{sem}° Semestre</option>
-                          ))}
-                        </select>
-                        <select
-                          value={groupAssignmentFilter}
-                          onChange={(e) => setGroupAssignmentFilter(e.target.value)}
-                          className="bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-2.5 py-1.5 outline-none text-xs theme-transition cursor-pointer"
-                        >
-                          <option value="all">Grupo: Todos</option>
-                          {groupOptionsForAssignments.map(g => (
-                            <option key={g.id} value={g.id}>{g.clave}</option>
-                          ))}
-                        </select>
-                        <input
-                          type="text"
-                          value={assignmentSearchQuery}
-                          onChange={(e) => setAssignmentSearchQuery(e.target.value)}
-                          placeholder="Buscar asignación..."
-                          className="w-full sm:w-36 bg-bg-surface border border-bdr-base focus:border-brand-primary text-txt-base rounded-xl px-3 py-1.5 outline-none text-xs theme-transition"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <table className="w-full border-collapse text-left">
-                        <thead>
-                          <tr className="border-b border-bdr-base text-txt-muted text-[10px] font-extrabold uppercase tracking-wider">
-                            <th className="py-3 px-4 text-center">Semestre</th>
-                            <th className="py-3 px-4">Grupo Clave</th>
-                            <th className="py-3 px-4">Asignatura (Clave)</th>
-                            <th className="py-3 px-4">Docente</th>
-                            <th className="py-3 px-4">Horario</th>
-                            <th className="py-3 px-4 text-center">Acciones</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-bdr-base/40 text-xs">
-                          {loadingAlumnosData ? (
-                            <tr>
-                              <td colSpan="6" className="py-8 text-center text-txt-muted">
-                                <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2" />
-                                <span>Cargando asignaciones...</span>
-                              </td>
-                            </tr>
-                          ) : filteredAssignments.length === 0 ? (
-                            <tr>
-                              <td colSpan="6" className="py-8 text-center text-txt-muted italic">
-                                No se encontraron materias vinculadas a grupos.
-                              </td>
-                            </tr>
-                          ) : (
-                            filteredAssignments.map(asg => (
-                              <tr key={asg.id} className="hover:bg-bg-surface/30 theme-transition">
-                                <td className="py-3.5 px-4 text-center font-bold text-txt-subtle">{asg.semestre}°</td>
-                                <td className="py-3.5 px-4 font-bold text-brand-primary">{asg.grupo_clave}</td>
-                                <td className="py-3.5 px-4 font-semibold text-txt-base">
-                                  {asg.materia_nombre}
-                                  <span className="text-[10px] text-txt-muted block font-mono font-normal">{asg.materia_clave}</span>
-                                </td>
-                                <td className="py-3.5 px-4 text-txt-subtle">{asg.docente_nombre}</td>
-                                <td className="py-3.5 px-4 text-txt-muted font-semibold">{asg.horario || 'Sin horario'}</td>
-                                <td className="py-3.5 px-4 text-center">
-                                  {!isPastCycle ? (
-                                    <button
-                                      onClick={() => handleDeleteGroupAssignment(asg.id, asg.materia_nombre, asg.grupo_clave)}
-                                      className="p-1.5 hover:bg-rose-500/10 text-txt-muted hover:text-rose-500 rounded-lg transition-all cursor-pointer"
-                                      title="Eliminar asignación"
-                                    >
-                                      <Trash2 className="w-4 h-4" />
-                                    </button>
-                                  ) : (
-                                    <span className="text-txt-muted/30 text-xs">-</span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {alumnosSubTab === 'bajas' && (
                 <div className="bg-bg-card border border-bdr-base p-6 rounded-2xl shadow-sm theme-transition flex flex-col space-y-4 animate-fadeIn">
                   <div>
@@ -5877,6 +5477,23 @@ export default function AdminDashboard({ user }) {
                   console.error('Error refreshing options:', e);
                 }
               }}
+            />
+          )}
+
+          {activeTab === 'asignaciones' && (
+            <AsignacionesTab
+              assignmentOptions={assignmentOptions}
+              isPastCycle={isPastCycle}
+              onRefreshOptions={async () => {
+                try {
+                  const options = await api.getAssignmentOptions();
+                  setAssignmentOptions(options);
+                  await fetchAdminDashboardData();
+                } catch (e) {
+                  console.error('Error refreshing options:', e);
+                }
+              }}
+              onOpenImportModal={() => setIsImportModalOpen(true)}
             />
           )}
 
