@@ -14,6 +14,7 @@ ORDER BY u.nombre_completo;
 const MATERIAS_QUERY = `
 SELECT materia_id AS id, nombre, clave
 FROM dbo.Materias
+WHERE activo = 1
 ORDER BY nombre;
 `;
 

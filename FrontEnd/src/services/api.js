@@ -992,6 +992,72 @@ export const api = {
     return await res.json();
   },
 
+  getMaterias: async (ciclo = null) => {
+    const cycleToUse = ciclo || getSchoolCycle();
+    const url = cycleToUse ? `${BASE_URL}/materias?ciclo=${encodeURIComponent(cycleToUse)}` : `${BASE_URL}/materias`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al obtener el catálogo de materias');
+    }
+    return await res.json();
+  },
+
+  createMateria: async (materiaData) => {
+    const res = await fetch(`${BASE_URL}/materias`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(materiaData)
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al registrar la materia');
+    }
+    return await res.json();
+  },
+
+  updateMateria: async (materiaId, materiaData) => {
+    const res = await fetch(`${BASE_URL}/materias/${materiaId}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(materiaData)
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al actualizar la materia');
+    }
+    return await res.json();
+  },
+
+  deleteMateria: async (materiaId, ciclo = null) => {
+    const cycleToUse = ciclo || getSchoolCycle();
+    const url = cycleToUse ? `${BASE_URL}/materias/${materiaId}?ciclo=${encodeURIComponent(cycleToUse)}` : `${BASE_URL}/materias/${materiaId}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al procesar la materia');
+    }
+    return await res.json();
+  },
+
+  reactivateMateria: async (materiaId) => {
+    const res = await fetch(`${BASE_URL}/materias/${materiaId}/reactivar`, {
+      method: 'PATCH',
+      headers: getHeaders()
+    });
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.message || 'Error al reactivar la materia');
+    }
+    return await res.json();
+  },
+
   forgotPassword: async (email) => {
     
   const res = await fetch(`${BASE_URL}/auth/forgot-password`, {

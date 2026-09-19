@@ -11,6 +11,7 @@ import assignmentsRoutes from "./routes/assignments.routes.js";
 import docentesRoutes from "./routes/docentes.routes.js";
 import alumnosRoutes from "./routes/alumnos.routes.js";
 import periodosRoutes from "./routes/periodos.routes.js";
+import materiasRoutes from "./routes/materias.routes.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -82,6 +83,7 @@ app.use("/api/assignments", assignmentsRoutes);
 app.use("/api/docentes", docentesRoutes);
 app.use("/api/alumnos", alumnosRoutes);
 app.use("/api/periodos", periodosRoutes);
+app.use("/api/materias", materiasRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: "Ruta no encontrada" });
